@@ -1,0 +1,156 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>手書きマニュアル処理システム Dashboard</title>
+    <link rel="stylesheet" href="/static/css/style.css">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;700&family=Noto+Sans+JP:wght@400;600;700&display=swap" rel="stylesheet">
+</head>
+<body>
+    <div class="app-container">
+        <!-- Header -->
+        <header class="header">
+            <div class="logo">
+                <span class="icon">📄</span>
+                <h1>手書きマニュアル処理システム <span class="version">v2.0</span></h1>
+            </div>
+            <div class="status-badge" id="system-status">
+                <span class="dot green"></span> システム正常稼働中
+            </div>
+        </header>
+
+        <!-- Main Layout -->
+        <main class="main-content">
+            <!-- Left Column: Upload & Options -->
+            <section class="panel control-panel">
+                <h2>1. PDF アップロード</h2>
+                <div class="drop-zone" id="drop-zone">
+                    <div class="drop-icon">📤</div>
+                    <p class="drop-text">ここに PDF をドラッグ＆ドロップ<br>または <label for="file-input" class="browse-btn">ファイルを選択</label></p>
+                    <input type="file" id="file-input" accept=".pdf" style="display: none;">
+                    <div class="file-info" id="selected-file-info"></div>
+                </div>
+
+                <h2>2. 処理オプション</h2>
+                <div class="options-group">
+                    <label class="toggle-label">
+                        <input type="checkbox" id="compact-layout-toggle">
+                        <span class="toggle-custom"></span>
+                        コンパクトレイアウト（余白削減）
+                    </label>
+                    <label class="toggle-label">
+                        <input type="checkbox" id="use-emojis-toggle" checked>
+                        <span class="toggle-custom"></span>
+                        見出しに絵文字を自動挿入
+                    </label>
+                </div>
+
+                <button class="primary-btn" id="start-btn" disabled>AI パイプライン処理開始</button>
+
+                <!-- Progress Section -->
+                <div class="progress-section" id="progress-section" style="display: none;">
+                    <div class="progress-header">
+                        <span id="progress-stage">OCR・AI処理中...</span>
+                        <span id="progress-percent">0%</span>
+                    </div>
+                    <div class="progress-bar-bg">
+                        <div class="progress-bar-fill" id="progress-fill" style="width: 0%;"></div>
+                    </div>
+                </div>
+            </section>
+
+            <!-- Right Column: Results & Editor -->
+            <section class="panel result-panel">
+                <div class="tabs">
+                    <button class="tab-btn active" data-tab="summary-tab">📄 要約 & 構造化</button>
+                    <button class="tab-btn" data-tab="mermaid-tab">📊 フローチャート編集</button>
+                    <button class="tab-btn" data-tab="download-tab">💾 成果物ダウンロード</button>
+                </div>
+
+                <!-- Tab 1: Summary -->
+                <div class="tab-content active" id="summary-tab">
+                    <div class="placeholder-text" id="summary-placeholder">PDF をアップロードして処理を開始してください。</div>
+                    <div id="summary-content" style="display: none;">
+                        <h3 id="doc-title">タイトル</h3>
+                        <div class="summary-box">
+                            <h4>概要</h4>
+                            <p id="doc-summary"></p>
+                        </div>
+                        <div class="keypoints-box">
+                            <h4>重要ポイント</h4>
+                            <ul id="doc-keypoints"></ul>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Tab 2: Mermaid Editor -->
+                <div class="tab-content" id="mermaid-tab">
+                    <div class="mermaid-container">
+                        <div class="editor-pane">
+                            <div class="toolbar">
+                                <label>テーマ:</label>
+                                <select id="mermaid-theme">
+                                    <option value="default">Default</option>
+                                    <option value="dark">Dark</option>
+                                    <option value="forest">Forest</option>
+                                    <option value="neutral">Neutral</option>
+                                </select>
+                                <button class="small-btn" id="render-mermaid-btn">プレビュー更新</button>
+                            </div>
+                            <textarea id="mermaid-code-input" placeholder="graph TD;&#10;  A[開始] --> B[処理];"></textarea>
+
+                            <div class="ai-assistant-box">
+                                <h4>🤖 AI 再生成アシスタント</h4>
+                                <div class="ai-input-group">
+                                    <input type="text" id="ai-instruction" placeholder="例: ステップ3を2つの分岐に分けて">
+                                    <button class="small-btn primary" id="ai-regenerate-btn">修正指示</button>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="preview-pane">
+                            <h4>リアルタイムプレビュー</h4>
+                            <div class="image-wrapper">
+                                <img id="mermaid-preview-img" src="" alt="フローチャートプレビュー" style="display: none;">
+                                <div class="placeholder-text" id="diagram-placeholder">プレビュー未生成</div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Tab 3: Downloads -->
+                <div class="tab-content" id="download-tab">
+                    <div class="download-grid">
+                        <div class="download-card">
+                            <span class="file-icon">📄</span>
+                            <h4>PDF ドキュメント</h4>
+                            <p>印刷・配布用レイアウト</p>
+                            <button class="download-btn" data-type="pdf" disabled>PDF を保存</button>
+                        </div>
+                        <div class="download-card">
+                            <span class="file-icon">📝</span>
+                            <h4>Word 文書</h4>
+                            <p>再編集可能な docx 形式</p>
+                            <button class="download-btn" data-type="docx" disabled>Word を保存</button>
+                        </div>
+                        <div class="download-card">
+                            <span class="file-icon">🎵</span>
+                            <h4>音声ガイド (MP3)</h4>
+                            <p>AI 自動読み上げファイル</p>
+                            <button class="download-btn" data-type="audio" disabled>MP3 を保存</button>
+                        </div>
+                        <div class="download-card">
+                            <span class="file-icon">📊</span>
+                            <h4>フロー図 (PNG)</h4>
+                            <p>高解像度ダイアグラム画像</p>
+                            <button class="download-btn" data-type="diagram" disabled>画像を保存</button>
+                        </div>
+                    </div>
+                </div>
+            </section>
+        </main>
+    </div>
+
+    <script src="/static/js/app.js"></script>
+</body>
+</html>

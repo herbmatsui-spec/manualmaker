@@ -1,0 +1,329 @@
+"""
+Processor Module
+Main processing logic integrating OCR, summarization, and output generation
+"""
+
+import logging
+from pathlib import Path
+from typing import Dict, Optional
+
+from config import Config
+from src.ocr_processor import OCRProcessor
+from src.gemini_processor import GeminiProcessor, GeminiResult, Section
+from src.processor.processor_factory import ProcessorFactory
+from src.pdf_generator import create_formatted_pdf
+from src.docx_generator import create_word_document
+from src.audio_generator import create_audio_summary
+from src.diagram_generator import DiagramGenerator
+
+logger = logging.getLogger(__name__)
+
+
+def _sections_to_dicts(sections) -> list:
+    """Convert Section objects (or dicts) to list of dicts for compatibility"""
+    result = []
+    for sec in sections or []:
+        if isinstance(sec, dict):
+            result.append(sec)
+        elif isinstance(sec, Section):
+            result.append({'title': sec.title, 'content': sec.content})
+        else:
+            result.append({'title': str(sec), 'content': ''})
+    return result
+
+
+class DocumentProcessor:
+    """Main document processor"""
+    
+    def __init__(self, config: Optional[Config] = None):
+        self.config = config or Config.get_instance()
+        self.ocr_processor = OCRProcessor(api_key=self.config.google_api_key)
+        self.summarizer = ProcessorFactory.create_processor(self.config)
+        self.diagram_generator = DiagramGenerator(
+            api_key=self.config.gemini_api_key,
+            model_name=getattr(self.config, 'summary_model', getattr(self.config, 'gemini_model_name', 'gemini-1.5-flash'))
+        )
+        logger.info("DocumentProcessor initialized")
+
+    
+    def process_pdf(self, pdf_path: Path, compact_layout: bool = False, use_emojis: bool = False,
+                    progress_tracker = None, cancel_token = None) -> Dict:
+        """
+        Process a PDF file through the complete pipeline with progress tracking and cancellation support
+        """
+        import time
+        start_time = time.time()
+
+        if not pdf_path.exists():
+            raise FileNotFoundError(f"PDF file not found: {pdf_path}")
+        
+        if cancel_token is not None and hasattr(cancel_token, 'throw_if_cancelled'):
+            cancel_token.throw_if_cancelled()
+
+        if progress_tracker:
+            progress_tracker.update("init", 5.0, f"入力検証中: {pdf_path.name}")
+
+        # Step 6: Input Validation
+        file_size_mb = pdf_path.stat().st_size / (1024 * 1024)
+        if file_size_mb > self.config.max_file_size_mb:
+            elapsed = time.time() - start_time
+            logger.info(f"処理失敗: {pdf_path.name} ({elapsed:.1f}秒)")
+            return {
+                "success": False,
+                "input_file": str(pdf_path),
+                "error": f"ファイルサイズ ({file_size_mb:.1f}MB) が上限 ({self.config.max_file_size_mb}MB) を超えています"
+            }
+
+        if pdf_path.suffix.lower() not in self.config.supported_extensions:
+            elapsed = time.time() - start_time
+            logger.info(f"処理失敗: {pdf_path.name} ({elapsed:.1f}秒)")
+            return {
+                "success": False,
+                "input_file": str(pdf_path),
+                "error": f"サポートされていないファイル形式です: {pdf_path.suffix}"
+            }
+        
+        try:
+            logger.info(f"Starting processing of {pdf_path}")
+            
+            # Step 1: Extract text from PDF using OCR
+            if progress_tracker:
+                progress_tracker.update("ocr", 15.0, f"OCR処理中: {pdf_path.name}")
+            extracted_text = self._extract_text_from_pdf(pdf_path, progress_tracker=progress_tracker, cancel_token=cancel_token)
+            logger.info(f"OCR completed: {len(extracted_text)} characters extracted")
+            
+            if cancel_token is not None and hasattr(cancel_token, 'throw_if_cancelled'):
+                cancel_token.throw_if_cancelled()
+
+            # Step 2: Summarize and structure the text
+            if progress_tracker:
+                progress_tracker.update("summarize", 50.0, f"AI要約・構成生成中: {pdf_path.name}")
+            
+            if hasattr(self.summarizer, 'process_document'):
+                import inspect
+                sig = inspect.signature(self.summarizer.process_document)
+                if 'cancel_token' in sig.parameters:
+                    summary_result = self.summarizer.process_document(extracted_text, cancel_token=cancel_token)
+                else:
+                    summary_result = self.summarizer.process_document(extracted_text)
+            else:
+                summary_result = self.summarizer.process_document(extracted_text)
+                
+            logger.info(f"Summarization completed: {len(summary_result.key_points)} key points found")
+            
+            if cancel_token is not None and hasattr(cancel_token, 'throw_if_cancelled'):
+                cancel_token.throw_if_cancelled()
+
+            # Step 3: Generate output files
+            if progress_tracker:
+                progress_tracker.update("output", 75.0, f"ファイル出力中 (PDF/Word/音声/図表): {pdf_path.name}")
+            output_files = self._generate_outputs(summary_result, pdf_path, compact_layout=compact_layout, use_emojis=use_emojis)
+            
+            if progress_tracker:
+                progress_tracker.update("completed", 100.0, f"処理完了: {pdf_path.name}")
+
+            elapsed = time.time() - start_time
+            logger.info(f"処理完了: {pdf_path.name} ({elapsed:.1f}秒)")
+
+            return {
+                "success": True,
+                "input_file": str(pdf_path),
+                "title": summary_result.title or "手書きマニュアル",
+                "extracted_text": extracted_text,
+                "summary": summary_result.summary,
+                "key_points": summary_result.key_points,
+                "sections": _sections_to_dicts(summary_result.sections),
+                "glossary": summary_result.glossary,
+                "diagram_path": output_files.get("diagram"),
+                "mermaid_code": output_files.get("mermaid_code", ""),
+                "output_files": output_files
+            }
+        except Exception as e:
+            elapsed = time.time() - start_time
+            logger.error(f"Processing failed for {pdf_path}: {e}")
+            logger.info(f"処理失敗: {pdf_path.name} ({elapsed:.1f}秒)")
+            return {
+                "success": False,
+                "input_file": str(pdf_path),
+                "error": str(e)
+            }
+            
+    def process_batch(self, pdf_paths: list, progress_tracker = None, cancel_token = None) -> list:
+        """
+        Process multiple PDF files sequentially
+        """
+        results = []
+        for pdf_path in pdf_paths:
+            if cancel_token is not None and hasattr(cancel_token, 'throw_if_cancelled'):
+                cancel_token.throw_if_cancelled()
+            path_obj = Path(pdf_path)
+            if path_obj.exists() and path_obj.suffix.lower() == ".pdf":
+                result = self.process_pdf(path_obj, progress_tracker=progress_tracker, cancel_token=cancel_token)
+                results.append(result)
+        return results
+
+    def process_directory(self, dir_path: Path, recursive: bool = True, progress_tracker = None, cancel_token = None) -> list:
+        """
+        Process all PDF files inside a directory
+        """
+        if not dir_path.exists() or not dir_path.is_dir():
+            raise NotADirectoryError(f"Directory not found: {dir_path}")
+        
+        pattern = "**/*.pdf" if recursive else "*.pdf"
+        pdf_files = list(dir_path.glob(pattern))
+        logger.info(f"Found {len(pdf_files)} PDF files in directory: {dir_path}")
+        return self.process_batch(pdf_files, progress_tracker=progress_tracker, cancel_token=cancel_token)
+    
+    def _extract_text_from_pdf(self, pdf_path: Path, progress_tracker = None, cancel_token = None) -> str:
+        """Extract text from all pages of a PDF (並列処理 + 部分失敗許容 + キャンセル対応)"""
+        from src.pdf_processor import extract_images_from_pdf
+        from concurrent.futures import ThreadPoolExecutor, as_completed
+
+        if cancel_token is not None and hasattr(cancel_token, 'throw_if_cancelled'):
+            cancel_token.throw_if_cancelled()
+
+        images = extract_images_from_pdf(pdf_path, dpi=self.config.pdf_dpi)
+        page_images = [(i, img) for i, img in enumerate(images)]
+        total_pages = len(page_images)
+
+        results = {}
+        failed_pages = []
+        max_workers = min(4, total_pages) if total_pages > 0 else 1
+
+        def ocr_page(page_num, img):
+            try:
+                if cancel_token is not None and hasattr(cancel_token, 'throw_if_cancelled'):
+                    cancel_token.throw_if_cancelled()
+                text = self.ocr_processor.extract_text(img)
+                return page_num, text if text.strip() else f"[ページ {page_num + 1}: テキストなし]"
+            except Exception as e:
+                logger.warning(f"ページ {page_num + 1}/{total_pages} のOCR失敗: {e}")
+                return page_num, None
+            finally:
+                img.close()
+
+        with ThreadPoolExecutor(max_workers=max_workers) as executor:
+            futures = {executor.submit(ocr_page, pn, img): pn for pn, img in page_images}
+            for future in as_completed(futures):
+                if cancel_token is not None and hasattr(cancel_token, 'throw_if_cancelled'):
+                    cancel_token.throw_if_cancelled()
+                page_num, text = future.result()
+                if text is None:
+                    failed_pages.append(page_num + 1)
+                    results[page_num] = f"[ページ {page_num + 1}: 読み取り失敗]"
+                else:
+                    results[page_num] = text
+
+        text_parts = [results[i] for i in range(total_pages)]
+
+        if failed_pages:
+            logger.warning(f"OCR部分失敗: ページ {sorted(failed_pages)} ({len(failed_pages)}/{total_pages}ページ)")
+
+        if not any(t.strip() and not t.startswith("[ページ") for t in text_parts):
+            raise Exception(f"全ページのOCRに失敗しました: {pdf_path}")
+
+        return "\n\n".join(text_parts)
+    
+    def _generate_outputs(self, summary_result: GeminiResult, pdf_path: Path, compact_layout: bool = False, use_emojis: bool = False) -> Dict[str, str]:
+        """Generate PDF, Word, audio, and flowchart diagram output files"""
+        import re
+        output_dir = self.config.output_directory
+        doc_title = summary_result.title or "処理済みマニュアル"
+        
+        # 安全なファイル名を生成
+        safe_title = re.sub(r'[\\/:*?"<>|]', '_', doc_title).strip()
+        base_name = f"{pdf_path.stem}_{safe_title}" if safe_title else pdf_path.stem
+        
+        # セクションをdict形式に変換（互換性維持）
+        sections_dicts = _sections_to_dicts(summary_result.sections)
+        
+        # 整形テキストの構築
+        content_lines = []
+        content_lines.append(f"概要\n{summary_result.summary}\n")
+        
+        if summary_result.key_points:
+            content_lines.append("## 初心者向け重要ポイント")
+            for kp in summary_result.key_points:
+                content_lines.append(f"- {kp}")
+            content_lines.append("")
+            
+        for sec in sections_dicts:
+            content_lines.append(f"## {sec['title']}")
+            content_lines.append(sec['content'])
+            content_lines.append("")
+            
+        glossary = summary_result.glossary or []
+        if glossary:
+            content_lines.append("## 用語集（解説）")
+            for item in glossary:
+                content_lines.append(f"- {item['term']}: {item['explanation']}")
+            content_lines.append("")
+            
+        full_content_text = "\n".join(content_lines)
+        outputs = {}
+
+        # 1. Generate flowchart diagram FIRST
+        diagram_path_obj = None
+        if self.config.generate_diagram:
+            try:
+                diagram_output = output_dir / f"{base_name}_フロー図.png"
+                diagram_result = self.diagram_generator.generate(
+                    text=full_content_text,
+                    sections=sections_dicts,
+                    key_points=summary_result.key_points,
+                    output_path=diagram_output,
+                    theme=self.config.diagram_theme,
+                    width=self.config.diagram_width,
+                    height=self.config.diagram_height
+                )
+                if diagram_result.success and diagram_result.image_path:
+                    diagram_path_obj = diagram_result.image_path
+                    outputs["diagram"] = str(diagram_result.image_path)
+                    outputs["mermaid_code"] = diagram_result.mermaid_code
+                    logger.info(f"Diagram generated: {diagram_result.image_path}")
+                else:
+                    logger.warning(f"Diagram generation failed: {diagram_result.error_message}")
+                    outputs["diagram"] = None
+            except Exception as e:
+                logger.warning(f"Diagram generation failed: {e}")
+                outputs["diagram"] = None
+        
+        # 2. Generate PDF (with diagram image if present)
+        try:
+            pdf_output = output_dir / f"{base_name}.pdf"
+            create_formatted_pdf(full_content_text, pdf_output, title=doc_title,
+                                 compact_layout=compact_layout, use_emojis=use_emojis,
+                                 diagram_path=diagram_path_obj)
+            outputs["pdf"] = str(pdf_output)
+            logger.info(f"PDF generated: {pdf_output}")
+        except Exception as e:
+            logger.warning(f"PDF generation failed: {e}")
+            outputs["pdf"] = None
+        
+        # 3. Generate Word document (with diagram image if present)
+        try:
+            docx_output = output_dir / f"{base_name}.docx"
+            create_word_document(full_content_text, docx_output, title=doc_title,
+                                 compact_layout=compact_layout, use_emojis=use_emojis,
+                                 diagram_path=diagram_path_obj)
+            outputs["docx"] = str(docx_output)
+            logger.info(f"Word document generated: {docx_output}")
+        except Exception as e:
+            logger.warning(f"Word generation failed: {e}")
+            outputs["docx"] = None
+        
+        # 4. Generate audio - combine title, summary, and key points
+        try:
+            audio_text = f"【{doc_title}】\n\n{summary_result.summary}"
+            if summary_result.key_points:
+                audio_text += "\n\n重要なポイントをまとめます。\n" + "\n".join([f"ポイント: {point}" for point in summary_result.key_points])
+            
+            audio_output = output_dir / f"{base_name}.mp3"
+            create_audio_summary(audio_text, audio_output)
+            outputs["audio"] = str(audio_output)
+            logger.info(f"Audio file generated: {audio_output}")
+        except Exception as e:
+            logger.warning(f"Audio generation failed: {e}")
+            outputs["audio"] = None
+        
+        return outputs
