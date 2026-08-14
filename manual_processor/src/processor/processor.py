@@ -96,28 +96,13 @@ class DocumentProcessor:
                 cancel_token.throw_if_cancelled()
 
             # Step 2: Summarize and structure the text
-            if progress_tracker:
-                progress_tracker.update("summarize", 50.0, f"AI要約・構成生成中: {pdf_path.name}")
-            
-            if hasattr(self.summarizer, 'process_document'):
-                import inspect
-                sig = inspect.signature(self.summarizer.process_document)
-                if 'cancel_token' in sig.parameters:
-                    summary_result = self.summarizer.process_document(extracted_text, cancel_token=cancel_token)
-                else:
-                    summary_result = self.summarizer.process_document(extracted_text)
-            else:
-                summary_result = self.summarizer.process_document(extracted_text)
-                
-            logger.info(f"Summarization completed: {len(summary_result.key_points)} key points found")
+            summary_result = self._run_summarization(extracted_text, pdf_path, progress_tracker=progress_tracker, cancel_token=cancel_token)
             
             if cancel_token is not None and hasattr(cancel_token, 'throw_if_cancelled'):
                 cancel_token.throw_if_cancelled()
 
             # Step 3: Generate output files
-            if progress_tracker:
-                progress_tracker.update("output", 75.0, f"ファイル出力中 (PDF/Word/音声/図表): {pdf_path.name}")
-            output_files = self._generate_outputs(summary_result, pdf_path, compact_layout=compact_layout, use_emojis=use_emojis)
+            output_files = self._run_output_generation(summary_result, pdf_path, compact_layout=compact_layout, use_emojis=use_emojis, progress_tracker=progress_tracker)
             
             if progress_tracker:
                 progress_tracker.update("completed", 100.0, f"処理完了: {pdf_path.name}")
@@ -148,6 +133,30 @@ class DocumentProcessor:
                 "error": str(e)
             }
             
+    def _run_summarization(self, extracted_text: str, pdf_path: Path, progress_tracker = None, cancel_token = None) -> GeminiResult:
+        """AIによる要約・構造化を実行"""
+        if progress_tracker:
+            progress_tracker.update("summarize", 50.0, f"AI要約・構成生成中: {pdf_path.name}")
+        
+        if hasattr(self.summarizer, 'process_document'):
+            import inspect
+            sig = inspect.signature(self.summarizer.process_document)
+            if 'cancel_token' in sig.parameters:
+                summary_result = self.summarizer.process_document(extracted_text, cancel_token=cancel_token)
+            else:
+                summary_result = self.summarizer.process_document(extracted_text)
+        else:
+            summary_result = self.summarizer.process_document(extracted_text)
+            
+        logger.info(f"Summarization completed: {len(summary_result.key_points)} key points found")
+        return summary_result
+
+    def _run_output_generation(self, summary_result: GeminiResult, pdf_path: Path, compact_layout: bool = False, use_emojis: bool = False, progress_tracker = None) -> Dict[str, str]:
+        """出力ファイル（PDF/Word/音声/図表）の生成を実行"""
+        if progress_tracker:
+            progress_tracker.update("output", 75.0, f"ファイル出力中 (PDF/Word/音声/図表): {pdf_path.name}")
+        return self._generate_outputs(summary_result, pdf_path, compact_layout=compact_layout, use_emojis=use_emojis)
+
     def process_batch(self, pdf_paths: list, progress_tracker = None, cancel_token = None) -> list:
         """
         Process multiple PDF files sequentially
@@ -175,7 +184,7 @@ class DocumentProcessor:
         return self.process_batch(pdf_files, progress_tracker=progress_tracker, cancel_token=cancel_token)
     
     def _extract_text_from_pdf(self, pdf_path: Path, progress_tracker = None, cancel_token = None) -> str:
-        """Extract text from all pages of a PDF (並列処理 + 部分失敗許容 + キャンセル対応)"""
+        """Extract text from all pages of a PDF (バッチ並列処理 + メモリ解放 + 部分失敗許容 + キャンセル対応)"""
         from src.pdf_processor import extract_images_from_pdf
         from concurrent.futures import ThreadPoolExecutor, as_completed
 
@@ -183,41 +192,53 @@ class DocumentProcessor:
             cancel_token.throw_if_cancelled()
 
         images = extract_images_from_pdf(pdf_path, dpi=self.config.pdf_dpi)
-        page_images = [(i, img) for i, img in enumerate(images)]
-        total_pages = len(page_images)
+        total_pages = len(images)
+        if total_pages == 0:
+            raise Exception(f"PDFから画像を抽出できませんでした: {pdf_path}")
 
         results = {}
         failed_pages = []
-        max_workers = min(4, total_pages) if total_pages > 0 else 1
+        batch_size = 4
 
         def ocr_page(page_num, img):
             try:
                 if cancel_token is not None and hasattr(cancel_token, 'throw_if_cancelled'):
                     cancel_token.throw_if_cancelled()
                 text = self.ocr_processor.extract_text(img)
-                return page_num, text if text.strip() else f"[ページ {page_num + 1}: テキストなし]"
+                return page_num, (text if text.strip() else f"[ページ {page_num + 1}: テキストなし]"), None
             except Exception as e:
                 logger.warning(f"ページ {page_num + 1}/{total_pages} のOCR失敗: {e}")
-                return page_num, None
+                return page_num, None, str(e)
             finally:
-                img.close()
+                try:
+                    img.close()
+                except Exception:
+                    pass
 
-        with ThreadPoolExecutor(max_workers=max_workers) as executor:
-            futures = {executor.submit(ocr_page, pn, img): pn for pn, img in page_images}
-            for future in as_completed(futures):
-                if cancel_token is not None and hasattr(cancel_token, 'throw_if_cancelled'):
-                    cancel_token.throw_if_cancelled()
-                page_num, text = future.result()
-                if text is None:
-                    failed_pages.append(page_num + 1)
-                    results[page_num] = f"[ページ {page_num + 1}: 読み取り失敗]"
-                else:
-                    results[page_num] = text
+        for start_idx in range(0, total_pages, batch_size):
+            if cancel_token is not None and hasattr(cancel_token, 'throw_if_cancelled'):
+                cancel_token.throw_if_cancelled()
+
+            batch = [(start_idx + i, images[start_idx + i]) for i in range(min(batch_size, total_pages - start_idx))]
+            max_workers = min(len(batch), 4)
+
+            with ThreadPoolExecutor(max_workers=max_workers) as executor:
+                futures = {executor.submit(ocr_page, pn, img): pn for pn, img in batch}
+                for future in as_completed(futures):
+                    if cancel_token is not None and hasattr(cancel_token, 'throw_if_cancelled'):
+                        cancel_token.throw_if_cancelled()
+                    page_num, text, err = future.result()
+                    if text is None:
+                        failed_pages.append((page_num + 1, err or "OCR Error"))
+                        results[page_num] = f"[ページ {page_num + 1}: 読み取り失敗]"
+                    else:
+                        results[page_num] = text
 
         text_parts = [results[i] for i in range(total_pages)]
 
         if failed_pages:
-            logger.warning(f"OCR部分失敗: ページ {sorted(failed_pages)} ({len(failed_pages)}/{total_pages}ページ)")
+            failed_info = [f"P{p}({err})" for p, err in failed_pages]
+            logger.warning(f"OCR部分失敗: {len(failed_pages)}/{total_pages}ページ - {', '.join(failed_info)}")
 
         if not any(t.strip() and not t.startswith("[ページ") for t in text_parts):
             raise Exception(f"全ページのOCRに失敗しました: {pdf_path}")

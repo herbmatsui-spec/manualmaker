@@ -38,6 +38,8 @@ class OCRResult:
     confidence: float
     page_number: int
     bounding_boxes: List[BoundingBox]
+    has_error: bool = False
+    error_message: str = ""
 
 class OCRProcessor:
     """Google Cloud Vision APIを使用したOCR処理クラス"""
@@ -272,12 +274,14 @@ class OCRProcessor:
                 
             except OCRError as e:
                 logger.error(f"ページ {page_number} のOCRに失敗: {e}")
-                # 失敗したページは空の結果として追加
+                # 失敗したページはエラー情報付きの空結果として追加
                 results.append(OCRResult(
                     text="",
                     confidence=0.0,
                     page_number=page_number,
-                    bounding_boxes=[]
+                    bounding_boxes=[],
+                    has_error=True,
+                    error_message=str(e)
                 ))
         
         logger.info(f"複数ページOCR処理完了: {len(results)} ページ処理")

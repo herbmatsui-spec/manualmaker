@@ -165,7 +165,22 @@ class GeminiProcessor:
                 if summary_chunk:
                     summaries.append(summary_chunk)
             
-            return "\n\n".join(summaries)
+            if not summaries:
+                return ""
+            
+            if len(summaries) == 1:
+                return summaries[0]
+            
+            # Map-Reduce: 複数チャンクの要約を統合して最終要約を生成
+            if cancel_token is not None and hasattr(cancel_token, 'throw_if_cancelled'):
+                cancel_token.throw_if_cancelled()
+            
+            combined_summary = "\n\n".join(summaries)
+            final_prompt = (
+                f"以下は複数セクションの要約です。これらを統合し、{target_audience}向けに"
+                f"一貫性のある自然でわかりやすい全体要約を作成してください:\n\n{combined_summary}"
+            )
+            return self._generate_with_retry(final_prompt)
             
         except Exception as e:
             if cancel_token is not None and hasattr(cancel_token, 'is_cancelled') and cancel_token.is_cancelled:
