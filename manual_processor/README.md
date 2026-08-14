@@ -1,9 +1,10 @@
-# 手書きマニュアル処理システム (Manual Processor) v2.0
+# 手書きマニュアル処理システム (Manual Processor) v2.1
 
 [![Python Version](https://img.shields.io/badge/python-3.8%2B-blue.svg)](https://www.python.org/)
 [![License](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
 [![Platform](https://img.shields.io/badge/platform-Windows%2010%2F11-win.svg)]()
 [![Tests](https://img.shields.io/badge/tests-99%20passed-brightgreen.svg)]()
+[![Status](https://img.shields.io/badge/status-production%20ready-brightgreen.svg)]()
 
 スキャンされた手書きマニュアル（PDF）を読み込み、**Google Gemini API** および **Google Cloud Vision API** を活用して高精度なOCR解析・初心者向けの要約および構造化を行い、**PDF**・**Word文書**・**音声ファイル(MP3/WAV)**・**フローチャート画像(PNG)** の複数フォーマットで自動出力するシステムです。
 
@@ -67,9 +68,11 @@ manual_processor/
 
 ## 💻 システム要件
 
-- **OS**: Windows 10 / 11
+- **OS**: Windows 10 / 11（Linux・macOS でも動作可能）
 - **Python**: Python 3.8 以上 (Python 3.14 で動作検証済み)
+- **メモリ**: 最小 4GB（推奨 8GB以上）
 - **API Key**: [Google AI Studio](https://aistudio.google.com/) で取得した API キー
+- **依存ライブラリ**: requirements.txt を参照
 
 ---
 
