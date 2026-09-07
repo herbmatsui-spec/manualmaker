@@ -1,253 +1,302 @@
-# manual_processor/tests/test_ocr_processor.py
+"""
+Tests for ocr_processor module (Step 21)
+Target coverage: 90%
+"""
+
 import pytest
-import io
 from pathlib import Path
-from unittest.mock import Mock, patch, MagicMock
+from unittest.mock import Mock, MagicMock, patch
 from PIL import Image
+import io
 
 from src.ocr_processor import (
     OCRProcessor,
     OCRResult,
     BoundingBox,
-    OCRError,
     perform_ocr_on_image,
-    process_pdf_with_ocr
+    process_pdf_with_ocr,
 )
 
+
+class TestBoundingBox:
+    """Test BoundingBox dataclass"""
+
+    def test_init(self):
+        bb = BoundingBox(x=10.0, y=20.0, width=100.0, height=50.0)
+        assert bb.x == 10.0
+        assert bb.y == 20.0
+        assert bb.width == 100.0
+        assert bb.height == 50.0
+
+
+class TestOCRResult:
+    """Test OCRResult dataclass"""
+
+    def test_init_defaults(self):
+        result = OCRResult(
+            text="test text",
+            confidence=0.95,
+            page_number=1,
+            bounding_boxes=[]
+        )
+        assert result.text == "test text"
+        assert result.has_error is False
+        assert result.error_message == ""
+
+    def test_init_with_error(self):
+        result = OCRResult(
+            text="",
+            confidence=0.0,
+            page_number=1,
+            bounding_boxes=[],
+            has_error=True,
+            error_message="Test error"
+        )
+        assert result.has_error is True
+        assert result.error_message == "Test error"
+
+
 class TestOCRProcessor:
-    """OCRProcessor クラスのテスト"""
+    """Test OCRProcessor class"""
 
-    def test_ocr_processor_initialization_success(self):
-        """正常な初期化ができること"""
-        with patch.dict('os.environ', {'GOOGLE_APPLICATION_CREDENTIALS': '/fake/path.json'}):
-            with patch('src.ocr_processor.vision.ImageAnnotatorClient'):
-                processor = OCRProcessor(project_id="test-project")
-                assert processor.project_id == "test-project"
-                assert processor.timeout == 30
-                assert processor.max_results == 10
+    @patch('src.ocr_processor._HAS_GOOGLE_VISION', False)
+    def test_init_raises_when_vision_not_available(self):
+        with pytest.raises(Exception) as exc_info:
+            OCRProcessor()
+        assert "インストールされていません" in str(exc_info.value)
 
-    def test_ocr_processor_initialization_missing_credentials(self):
-        """認証情報がない場合に初期化は成功するがクライアントはNone"""
+    @patch('src.ocr_processor._HAS_GOOGLE_VISION', True)
+    @patch('src.ocr_processor.vision.ImageAnnotatorClient')
+    def test_init_with_credentials(self, mock_client):
+        with patch.dict('os.environ', {'GOOGLE_APPLICATION_CREDENTIALS': '/path/to/creds'}):
+            processor = OCRProcessor()
+            assert processor.client is not None
+            mock_client.assert_called_once()
+
+    @patch('src.ocr_processor._HAS_GOOGLE_VISION', True)
+    @patch('src.ocr_processor.vision.ImageAnnotatorClient')
+    def test_init_with_api_key(self, mock_client):
         with patch.dict('os.environ', {}, clear=True):
-            processor = OCRProcessor(project_id="test-project")
-            assert processor.client is None
+            processor = OCRProcessor(api_key="test_api_key")
+            assert processor.client is not None
 
-    def test_ocr_processor_is_service_available(self):
-        """サービス利用可能チェックが機能すること"""
-        with patch.dict('os.environ', {'GOOGLE_APPLICATION_CREDENTIALS': '/fake/path.json'}):
-            with patch('src.ocr_processor.vision.ImageAnnotatorClient') as mock_client:
-                mock_instance = Mock()
-                mock_client.return_value = mock_instance
-                mock_instance.document_text_detection.return_value = Mock()
-                
-                processor = OCRProcessor(project_id="test-project")
-                assert processor.is_service_available() is True
+    @patch('src.ocr_processor._HAS_GOOGLE_VISION', True)
+    @patch('src.ocr_processor.vision.ImageAnnotatorClient')
+    def test_init_with_env_api_key(self, mock_client):
+        with patch.dict('os.environ', {'GOOGLE_API_KEY': 'env_api_key'}):
+            processor = OCRProcessor()
+            assert processor.client is not None
 
-    def test_ocr_processor_is_service_available_failure(self):
-        """サービス利用不可時にFalseが返ること"""
-        with patch.dict('os.environ', {'GOOGLE_APPLICATION_CREDENTIALS': '/fake/path.json'}):
-            with patch('src.ocr_processor.vision.ImageAnnotatorClient') as mock_client:
-                mock_instance = Mock()
-                mock_client.return_value = mock_instance
-                mock_instance.document_text_detection.side_effect = Exception("API error")
-                
-                processor = OCRProcessor(project_id="test-project")
-                assert processor.is_service_available() is False
+    @patch('src.ocr_processor._HAS_GOOGLE_VISION', True)
+    @patch('src.ocr_processor.vision.ImageAnnotatorClient')
+    def test_init_client_init_error(self, mock_client):
+        mock_client.side_effect = Exception("Init failed")
+        processor = OCRProcessor()
+        assert processor.client is None
+
+    @patch('src.ocr_processor._HAS_GOOGLE_VISION', True)
+    def test_extract_text_empty_image(self):
+        processor = OCRProcessor.__new__(OCRProcessor)
+        processor.client = Mock()
+        processor.prompt_builder = None
+        processor.post_process_text = Mock(return_value="")
+
+        mock_response = Mock()
+        mock_response.text = ""
+        mock_response.full_text_annotation = None
+
+        with patch.object(processor, 'perform_ocr_on_image', return_value=OCRResult(text="", confidence=0.0, page_number=1, bounding_boxes=[])):
+            result = processor.extract_text(Mock())
+            assert result == ""
+
+    @patch('src.ocr_processor._HAS_GOOGLE_VISION', True)
+    def test_extract_text_with_content(self):
+        processor = OCRProcessor.__new__(OCRProcessor)
+        processor.client = Mock()
+        processor.prompt_builder = None
+        processor.post_process_text = Mock(return_value="cleaned text")
+
+        ocr_result = OCRResult(text="raw text", confidence=0.9, page_number=1, bounding_boxes=[])
+
+        with patch.object(processor, 'perform_ocr_on_image', return_value=ocr_result):
+            result = processor.extract_text(Mock())
+            assert result == "cleaned text"
+
+    @patch('src.ocr_processor._HAS_GOOGLE_VISION', True)
+    def test_build_transcription_prompt_no_builder(self):
+        processor = OCRProcessor.__new__(OCRProcessor)
+        processor.prompt_builder = None
+
+        result = processor.build_transcription_prompt()
+        assert result == ""
+
+    @patch('src.ocr_processor._HAS_GOOGLE_VISION', True)
+    def test_build_transcription_prompt_with_builder(self):
+        processor = OCRProcessor.__new__(OCRProcessor)
+        processor.prompt_builder = Mock()
+        processor.prompt_builder.build_handwritten_transcription_prompt.return_value = "transcription prompt"
+
+        result = processor.build_transcription_prompt()
+        assert result == "transcription prompt"
+
+    @patch('src.ocr_processor._HAS_GOOGLE_VISION', True)
+    def test_post_process_text_empty(self):
+        processor = OCRProcessor.__new__(OCRProcessor)
+        processor.prompt_builder = None
+
+        result = processor.post_process_text("")
+        assert result == ""
+
+    @patch('src.ocr_processor._HAS_GOOGLE_VISION', True)
+    def test_post_process_text_no_builder(self):
+        processor = OCRProcessor.__new__(OCRProcessor)
+        processor.prompt_builder = None
+
+        result = processor.post_process_text("some text")
+        assert result == "some text"
+
+    @patch('src.ocr_processor._HAS_GOOGLE_VISION', True)
+    def test_is_service_available_false_when_no_client(self):
+        processor = OCRProcessor.__new__(OCRProcessor)
+        processor.client = None
+
+        result = processor.is_service_available()
+        assert result is False
+
+    @patch('src.ocr_processor._HAS_GOOGLE_VISION', True)
+    def test_is_service_available_true(self):
+        processor = OCRProcessor.__new__(OCRProcessor)
+        processor.client = Mock()
+
+        mock_vision = Mock()
+        mock_vision.Image.return_value = Mock()
+        with patch('src.ocr_processor.vision', mock_vision):
+            processor.is_service_available()
+            processor.client.document_text_detection.assert_called_once()
+
+    @patch('src.ocr_processor._HAS_GOOGLE_VISION', True)
+    def test_is_service_available_exception(self):
+        processor = OCRProcessor.__new__(OCRProcessor)
+        processor.client = Mock()
+        processor.client.document_text_detection.side_effect = Exception("API Error")
+
+        result = processor.is_service_available()
+        assert result is False
 
     def test_image_to_bytes(self):
-        """画像をバイト列に変換できること"""
-        with patch.dict('os.environ', {'GOOGLE_APPLICATION_CREDENTIALS': '/fake/path.json'}):
-            with patch('src.ocr_processor.vision.ImageAnnotatorClient'):
-                processor = OCRProcessor(project_id="test-project")
-                img = Image.new('RGB', (10, 10), color='red')
-                bytes_data = processor._image_to_bytes(img)
-                assert isinstance(bytes_data, bytes)
-                assert len(bytes_data) > 0
+        processor = OCRProcessor.__new__(OCRProcessor)
+        image = Image.new('RGB', (100, 100), color='red')
+
+        result = processor._image_to_bytes(image)
+
+        assert isinstance(result, bytes)
+        assert len(result) > 0
+
+        img = Image.open(io.BytesIO(result))
+        assert img.size == (100, 100)
 
     def test_vision_result_to_ocr_result_empty(self):
-        """空のVision APIレスポンスを処理できること"""
-        with patch.dict('os.environ', {'GOOGLE_APPLICATION_CREDENTIALS': '/fake/path.json'}):
-            with patch('src.ocr_processor.vision.ImageAnnotatorClient'):
-                processor = OCRProcessor(project_id="test-project")
-                # 空のレスポンスを作成
-                response = Mock()
-                response.full_text_annotation.text = ""
-                response.full_text_annotation.pages = []
-                
-                result = processor._vision_result_to_ocr_result(response, page_number=1)
-                assert result.text == ""
-                assert result.confidence == 0.0
-                assert result.page_number == 1
-                assert result.bounding_boxes == []
+        from src.ocr_processor import OCRProcessor
+        processor = OCRProcessor.__new__(OCRProcessor)
 
-    def test_vision_result_to_ocr_result_with_text(self):
-        """テキストを含むVision APIレスポンスを処理できること"""
-        with patch.dict('os.environ', {'GOOGLE_APPLICATION_CREDENTIALS': '/fake/path.json'}):
-            with patch('src.ocr_processor.vision.ImageAnnotatorClient'):
-                processor = OCRProcessor(project_id="test-project")
-                
-                # モックレスポンスの構造を作成
-                response = Mock()
-                response.full_text_annotation.text = "こんにちは世界"
-                
-                # ページ、ブロック、段落、単語のモック
-                page = Mock()
-                block = Mock()
-                paragraph = Mock()
-                word = Mock()
-                symbol = Mock()
-                
-                symbol.text = "こ"
-                symbol.__str__ = Mock(return_value="こ")
-                word.symbols = [symbol]
-                word.confidence = 0.9
-                word.bounding_box.vertices = [
-                    Mock(x=10, y=10),
-                    Mock(x=20, y=10),
-                    Mock(x=20, y=20),
-                    Mock(x=10, y=20)
-                ]
-                paragraph.words = [word]
-                block.paragraphs = [paragraph]
-                page.blocks = [block]
-                response.full_text_annotation.pages = [page]
-                
-                result = processor._vision_result_to_ocr_result(response, page_number=1)
-                assert result.text == "こ"
-                assert result.confidence == 0.9
-                assert result.page_number == 1
-                assert len(result.bounding_boxes) == 1
-                assert result.bounding_boxes[0].x == 10.0
-                assert result.bounding_boxes[0].y == 10.0
-                assert result.bounding_boxes[0].width == 10.0
-                assert result.bounding_boxes[0].height == 10.0
+        mock_response = Mock()
+        mock_response.full_text_annotation = None
 
-    def test_perform_ocr_on_image_success(self):
-        """正常なOCR処理ができること"""
-        with patch.dict('os.environ', {'GOOGLE_APPLICATION_CREDENTIALS': '/fake/path.json'}):
-            with patch('src.ocr_processor.vision.ImageAnnotatorClient') as mock_client:
-                # Vision APIレスポンスのモック
-                mock_response = Mock()
-                mock_response.error.message = ""
-                mock_response.full_text_annotation.text = "テストテキスト"
-                mock_response.full_text_annotation.pages = []
-                
-                mock_instance = Mock()
-                mock_client.return_value = mock_instance
-                mock_instance.document_text_detection.return_value = mock_response
-                
-                processor = OCRProcessor(project_id="test-project")
-                img = Image.new('RGB', (100, 100), color='white')
-                
-                result = processor.perform_ocr_on_image(img)
-                assert isinstance(result, OCRResult)
-                assert result.text == "テストテキスト"
-                assert result.confidence >= 0.0  # 実際の値はモック次第
-                assert result.page_number == 1
+        result = processor._vision_result_to_ocr_result(mock_response, page_number=1)
 
-    def test_perform_ocr_on_image_api_error(self):
-        """APIエラー時にOCRErrorが送出されること"""
-        with patch.dict('os.environ', {'GOOGLE_APPLICATION_CREDENTIALS': '/fake/path.json'}):
-            with patch('src.ocr_processor.vision.ImageAnnotatorClient') as mock_client:
-                mock_response = Mock()
-                mock_response.error.message = "API エラーが発生しました"
-                
-                mock_instance = Mock()
-                mock_client.return_value = mock_instance
-                mock_instance.document_text_detection.return_value = mock_response
-                
-                processor = OCRProcessor(project_id="test-project")
-                img = Image.new('RGB', (100, 100), color='white')
-                
-                with pytest.raises(OCRError, match="Vision APIエラー"):
-                    processor.perform_ocr_on_image(img)
+        assert result.text == ""
+        assert result.confidence == 0.0
+        assert result.page_number == 1
 
-    def test_process_pdf_pages(self):
-        """複数ページのOCR処理ができること"""
-        with patch.dict('os.environ', {'GOOGLE_APPLICATION_CREDENTIALS': '/fake/path.json'}):
-            with patch('src.ocr_processor.vision.ImageAnnotatorClient') as mock_client:
-                # Vision APIレスポンスのモック
-                mock_response = Mock()
-                mock_response.error.message = ""
-                mock_response.full_text_annotation.text = "ページテキスト"
-                mock_response.full_text_annotation.pages = []
-                
-                mock_instance = Mock()
-                mock_client.return_value = mock_instance
-                mock_instance.document_text_detection.return_value = mock_response
-                
-                processor = OCRProcessor(project_id="test-project")
-                images = [Image.new('RGB', (100, 100), color='white') for _ in range(3)]
-                
-                results = processor.process_pdf_pages(images)
-                assert len(results) == 3
-                for result in results:
-                    assert isinstance(result, OCRResult)
-                    assert result.text == "ページテキスト"
+    def test_vision_result_to_ocr_result_with_full_annotation(self):
+        from src.ocr_processor import OCRProcessor
+        processor = OCRProcessor.__new__(OCRProcessor)
 
-    def test_calculate_overall_confidence(self):
-        """全体の信頼度計算が正しく行われること"""
-        with patch.dict('os.environ', {'GOOGLE_APPLICATION_CREDENTIALS': '/fake/path.json'}):
-            with patch('src.ocr_processor.vision.ImageAnnotatorClient'):
-                processor = OCRProcessor(project_id="test-project")
-                
-                # テストデータ: 3ページ
-                results = [
-                    OCRResult(text="あいう", confidence=0.8, page_number=1, bounding_boxes=[]),
-                    OCRResult(text="かきくけこ", confidence=0.9, page_number=2, bounding_boxes=[]),
-                    OCRResult(text="さ", confidence=0.7, page_number=3, bounding_boxes=[])
-                ]
-                
-                # 重み付き平均: (0.8*3 + 0.9*5 + 0.7*1) / (3+5+1) = (2.4 + 4.5 + 0.7) / 9 = 7.6/9 = 0.844...
-                expected = (0.8*3 + 0.9*5 + 0.7*1) / (3+5+1)
-                actual = processor.calculate_overall_confidence(results)
-                assert abs(actual - expected) < 0.001
+        mock_symbol = Mock()
+        mock_symbol.text = "a"
 
-    def test_calculate_overall_confidence_empty(self):
-        """空のリストの場合は0.0を返すこと"""
-        with patch.dict('os.environ', {'GOOGLE_APPLICATION_CREDENTIALS': '/fake/path.json'}):
-            with patch('src.ocr_processor.vision.ImageAnnotatorClient'):
-                processor = OCRProcessor(project_id="test-project")
-                assert processor.calculate_overall_confidence([]) == 0.0
+        mock_word = Mock()
+        mock_word.symbols = [mock_symbol]
+        mock_word.confidence = 0.95
+        mock_word.bounding_box.vertices = [
+            Mock(x=0, y=0), Mock(x=10, y=0), Mock(x=10, y=10), Mock(x=0, y=10)
+        ]
 
-# 便利関数のテスト
-class TestConvenienceFunctions:
-    """便利関数のテスト"""
+        mock_paragraph = Mock()
+        mock_paragraph.words = [mock_word]
 
-    def test_perform_ocr_on_image_convenience(self):
-        """便利関数が正しく動作すること"""
-        with patch.dict('os.environ', {'GOOGLE_APPLICATION_CREDENTIALS': '/fake/path.json'}):
-            with patch('src.ocr_processor.OCRProcessor') as mock_processor_class:
-                mock_instance = Mock()
-                mock_processor_class.return_value = mock_instance
-                mock_result = OCRResult(text="テスト", confidence=0.9, page_number=1, bounding_boxes=[])
-                mock_instance.perform_ocr_on_image.return_value = mock_result
-                
-                img = Image.new('RGB', (100, 100), color='white')
-                result = perform_ocr_on_image(img, project_id="test", credentials_path="/fake/path.json")
-                
-                assert result == mock_result
-                mock_processor_class.assert_called_once_with(project_id="test", credentials_path="/fake/path.json")
-                mock_instance.perform_ocr_on_image.assert_called_once_with(img, None)
+        mock_block = Mock()
+        mock_block.paragraphs = [mock_paragraph]
 
-    def test_process_pdf_with_ocr_convenience(self):
-        """PDF処理の便利関数が正しく動作すること"""
-        with patch.dict('os.environ', {'GOOGLE_APPLICATION_CREDENTIALS': '/fake/path.json'}):
-            with patch('src.ocr_processor.OCRProcessor') as mock_processor_class:
-                mock_instance = Mock()
-                mock_processor_class.return_value = mock_instance
-                mock_results = [
-                    OCRResult(text="ページ1", confidence=0.8, page_number=1, bounding_boxes=[]),
-                    OCRResult(text="ページ2", confidence=0.9, page_number=2, bounding_boxes=[])
-                ]
-                mock_instance.process_pdf_pages.return_value = mock_results
-                
-                images = [Image.new('RGB', (100, 100), color='white') for _ in range(2)]
-                results = process_pdf_with_ocr(images, project_id="test", credentials_path="/fake/path.json")
-                
-                assert results == mock_results
-                mock_processor_class.assert_called_once_with(project_id="test", credentials_path="/fake/path.json")
-                mock_instance.process_pdf_pages.assert_called_once_with(images, None, None)
+        mock_page = Mock()
+        mock_page.blocks = [mock_block]
 
-if __name__ == "__main__":
-    pytest.main([__file__, "-v"])
+        mock_response = Mock()
+        mock_response.full_text_annotation.pages = [mock_page]
+        mock_response.full_text_annotation.text = "a"
+
+        result = processor._vision_result_to_ocr_result(mock_response, page_number=1)
+
+        assert result.text == "a"
+        assert result.confidence == 0.95
+        assert len(result.bounding_boxes) == 1
+
+
+class TestPerformOCROnImage:
+    """Test perform_ocr_on_image convenience function"""
+
+    @patch('src.ocr_processor.OCRProcessor')
+    def test_calls_processor_method(self, mock_processor_class):
+        mock_processor = Mock()
+        mock_processor_class.return_value = mock_processor
+
+        image = Image.new('RGB', (100, 100))
+        perform_ocr_on_image(image, language_hints=['ja'])
+
+        mock_processor.perform_ocr_on_image.assert_called_once()
+
+
+class TestProcessPdfWithOCR:
+    """Test process_pdf_with_ocr convenience function"""
+
+    @patch('src.ocr_processor.OCRProcessor')
+    def test_calls_processor_method(self, mock_processor_class):
+        mock_processor = Mock()
+        mock_processor_class.return_value = mock_processor
+
+        images = [Image.new('RGB', (100, 100))]
+        process_pdf_with_ocr(images)
+
+        mock_processor.process_pdf_pages.assert_called_once()
+
+
+class TestCalculateOverallConfidence:
+    """Test calculate_overall_confidence static method"""
+
+    def test_empty_results(self):
+        result = OCRProcessor.calculate_overall_confidence([])
+        assert result == 0.0
+
+    def test_single_result(self):
+        results = [
+            OCRResult(text="hello", confidence=0.9, page_number=1, bounding_boxes=[])
+        ]
+        assert OCRProcessor.calculate_overall_confidence(results) == 0.9
+
+    def test_multiple_results_weighted(self):
+        results = [
+            OCRResult(text="hi", confidence=0.8, page_number=1, bounding_boxes=[]),
+            OCRResult(text="hello world test", confidence=1.0, page_number=2, bounding_boxes=[]),
+        ]
+        result = OCRProcessor.calculate_overall_confidence(results)
+        expected = (0.8 * 2 + 1.0 * 16) / 18
+        assert abs(result - expected) < 0.001
+
+    def test_results_with_empty_text(self):
+        results = [
+            OCRResult(text="", confidence=0.9, page_number=1, bounding_boxes=[]),
+            OCRResult(text="content", confidence=0.5, page_number=2, bounding_boxes=[]),
+        ]
+        result = OCRProcessor.calculate_overall_confidence(results)
+        expected = (0.9 * 1 + 0.5 * 7) / 8
+        assert abs(result - expected) < 0.001

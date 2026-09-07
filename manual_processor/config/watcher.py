@@ -105,6 +105,7 @@ class ConfigWatcher:
         if self._observer and self._observer.is_alive():
             self._observer.stop()
             self._observer.join()
+            self._observer = None
             logger.info("Stopped config watcher")
 
     def is_running(self) -> bool:

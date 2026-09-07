@@ -64,7 +64,8 @@ class CacheManager:
             try:
                 with open(disk_path, "r", encoding="utf-8") as f:
                     data = json.load(f)
-                    entry = {"data": data, "timestamp": time.time()}
+                    stored_timestamp = data.get("timestamp") if isinstance(data, dict) else None
+                    entry = {"data": data.get("data") if isinstance(data, dict) else data, "timestamp": stored_timestamp or time.time()}
                     if self._is_entry_expired(entry):
                         disk_path.unlink(missing_ok=True)
                         logger.debug(f"CacheManager: Disk entry expired for key {key[:8]}")
@@ -89,7 +90,7 @@ class CacheManager:
         disk_path = self.cache_dir / f"{key}.json"
         try:
             with open(disk_path, "w", encoding="utf-8") as f:
-                json.dump(result, f, ensure_ascii=False, indent=2)
+                json.dump(entry, f, ensure_ascii=False, indent=2)
         except Exception as e:
             logger.warning(f"CacheManager: Failed writing cache file {disk_path.name}: {e}")
 

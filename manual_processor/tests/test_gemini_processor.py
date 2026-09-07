@@ -215,5 +215,117 @@ class TestGeminiProcessor:
             assert result.sections[0].title == "概要"
             assert result.sections[1].title == "重要ポイント"
 
+    def test_generate_title_success(self):
+        """正常にタイトル生成ができること"""
+        with patch('src.gemini_processor.genai.Client') as mock_client_class:
+            mock_client_instance = mock_client_class.return_value
+            mock_response = Mock()
+            mock_response.text = "テストマニュアル"
+            mock_client_instance.models.generate_content.return_value = mock_response
+
+            processor = GeminiProcessor(api_key="test-key")
+            result = processor.generate_title("これはテストテキストです")
+            assert result == "テストマニュアル"
+
+    def test_generate_title_empty_text(self):
+        """空テキストでデフォルトタイトルが返ること"""
+        with patch('src.gemini_processor.genai.Client'):
+            processor = GeminiProcessor(api_key="test-key")
+            result = processor.generate_title("")
+            assert result == "処理済みマニュアル"
+
+    def test_generate_title_exception(self):
+        """タイトル生成でエラー時にデフォルトが返ること"""
+        with patch('src.gemini_processor.genai.Client') as mock_client_class:
+            mock_client_instance = mock_client_class.return_value
+            mock_client_instance.models.generate_content.side_effect = Exception("API Error")
+
+            processor = GeminiProcessor(api_key="test-key")
+            result = processor.generate_title("some text")
+            assert result == "手書き整理マニュアル"
+
+    def test_convert_sections_empty(self):
+        """空セクションの変換"""
+        with patch('src.gemini_processor.genai.Client'):
+            processor = GeminiProcessor(api_key="test-key")
+            result = processor._convert_sections([])
+            assert result == []
+
+    def test_convert_sections_with_nested(self):
+        """ネストしたセクションの変換"""
+        with patch('src.gemini_processor.genai.Client'):
+            processor = GeminiProcessor(api_key="test-key")
+            sections_data = [
+                {"title": "Sec1", "content": "Content1", "subsections": [
+                    {"title": "Sub1", "content": "SubContent1"}
+                ]}
+            ]
+            result = processor._convert_sections(sections_data)
+            assert len(result) == 1
+            assert result[0].title == "Sec1"
+            assert result[0].subsections is not None
+            assert len(result[0].subsections) == 1
+            assert result[0].subsections[0].title == "Sub1"
+
+    def test_process_document_text_markers_success(self):
+        """テキストマーカーフォーマットの処理"""
+        with patch('src.gemini_processor.genai.Client') as mock_client_class:
+            mock_client_instance = mock_client_class.return_value
+            mock_response = Mock()
+            mock_response.text = """[TITLE]
+テストタイトル
+
+[SUMMARY]
+これはテストサマリーです。
+
+[KEY_POINTS]
+- ポイント1
+- ポイント2
+
+[SECTIONS]
+## セクション1
+セクション1の本文
+
+[GLOSSARY]
+- 用語: 解説
+"""
+            mock_client_instance.models.generate_content.return_value = mock_response
+
+            processor = GeminiProcessor(api_key="test-key")
+            result = processor._process_document_text_markers("テストテキスト")
+
+            assert result.title == "テストタイトル"
+            assert result.summary == "これはテストサマリーです。"
+            assert "ポイント1" in result.key_points
+            assert len(result.sections) >= 1
+
+    def test_process_document_text_markers_only_sections(self):
+        """SECTIONSのみの場合 - パースされずデフォルト値が返る"""
+        with patch('src.gemini_processor.genai.Client') as mock_client_class:
+            mock_client_instance = mock_client_class.return_value
+            mock_response = Mock()
+            mock_response.text = """[SECTIONS]
+## Sec1
+content
+"""
+            mock_client_instance.models.generate_content.return_value = mock_response
+
+            processor = GeminiProcessor(api_key="test-key")
+            result = processor._process_document_text_markers("テスト")
+            assert result.title == "手書き整理マニュアル"
+            assert result.sections == []
+            assert result.summary == ""
+            assert result.key_points == []
+
+    def test_generate_with_retry_raises(self):
+        """リトライでもエラーが発生する場合"""
+        with patch('src.gemini_processor.genai.Client') as mock_client_class:
+            mock_client_instance = mock_client_class.return_value
+            mock_client_instance.models.generate_content.side_effect = Exception("API Error")
+
+            processor = GeminiProcessor(api_key="test-key")
+            with pytest.raises(GeminiAPIError):
+                processor._generate_with_retry("test prompt")
+
 if __name__ == "__main__":
     pytest.main([__file__, "-v"])

@@ -1,9 +1,10 @@
-# 手書きマニュアル処理システム (Manual Processor) v2.1
+# 手書きマニュアル処理システム (Manual Processor) v2.4
 
 [![Python Version](https://img.shields.io/badge/python-3.8%2B-blue.svg)](https://www.python.org/)
 [![License](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
 [![Platform](https://img.shields.io/badge/platform-Windows%2010%2F11-win.svg)]()
-[![Tests](https://img.shields.io/badge/tests-99%20passed-brightgreen.svg)]()
+[![Tests](https://img.shields.io/badge/tests-1103%20passed-brightgreen.svg)]()
+[![Coverage](https://img.shields.io/badge/coverage-86%25-brightgreen.svg)]()
 [![Status](https://img.shields.io/badge/status-production%20ready-brightgreen.svg)]()
 
 スキャンされた手書きマニュアル（PDF）を読み込み、**Google Gemini API** および **Google Cloud Vision API** を活用して高精度なOCR解析・初心者向けの要約および構造化を行い、**PDF**・**Word文書**・**音声ファイル(MP3/WAV)**・**フローチャート画像(PNG)** の複数フォーマットで自動出力するシステムです。
@@ -60,7 +61,7 @@ manual_processor/
 │   ├── processor/           # プロセッサーファクトリー & ハイブリッド切り替え
 │   ├── gui/                 # デスクトップ GUI モジュール
 │   └── web/                 # FastAPI Web UI バックエンド & フロントエンド
-├── tests/                   # pytest テストスイート (全99件)
+├── tests/                   # pytest テストスイート (全1103件)
 ├── scripts/                 # スタンドアロン exe ビルドスクリプト等
 ├── main.py                  # アプリケーション共通エントリーポイント
 └── requirements.txt         # 依存ライブラリ一覧
@@ -120,10 +121,15 @@ python scripts/build_exe.py
 
 ## 🧪 テストの実行
 
-全 99 件のユニットテスト・統合テストを実行します：
+全 1103 件のユニットテスト・統合テストを実行します：
 
 ```bash
-python -m pytest tests/ -v
+python -m pytest manual_processor/tests/ -v
+```
+
+カバレッジ付きテスト実行：
+```bash
+python -m pytest manual_processor/tests/ --cov=src --cov=config --cov-fail-under=85 --rootdir=manual_processor
 ```
 
 ---

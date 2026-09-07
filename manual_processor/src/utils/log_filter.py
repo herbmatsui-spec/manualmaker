@@ -35,7 +35,7 @@ class SensitiveDataFilter(logging.Filter):
         (re.compile(r'\b[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}\b'), '[REDACTED_EMAIL]'),
         
         # Credit card numbers
-        (re.compile(r'\b(?:4\d{3}|5[1-5]\d{2}|3[47]\d{2}|6(?:011|5\d{2}))[ -]?\d{4}[ -]?\d{4}[ -]?\d{1,4}\b'), '[REDACTED_CARD]'),
+        (re.compile(r'\b(?:4\d{3}|5[1-5]\d{2}|3[47]\d{2}|6(?:011|5\d{2}))[ -]?\d{4}[ -]?\d{4}[ -]?\d{1,5}\b'), '[REDACTED_CARD]'),
         
         # Phone numbers (Japanese)
         (re.compile(r'0\d{1,4}-\d{1,4}-\d{4}'), '[REDACTED_PHONE]'),
