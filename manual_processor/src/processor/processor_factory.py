@@ -8,6 +8,7 @@ from typing import Optional, Dict, Any
 from config.config import AppConfig
 from src.gemini_processor import GeminiProcessor, GeminiResult, Section
 from src.exceptions import GeminiAPIError, ProcessingError
+from src.prompt_engine.prompt_builder import HandwrittenPromptBuilder
 
 logger = logging.getLogger(__name__)
 
@@ -78,7 +79,8 @@ class ProcessorFactory:
                 api_key=api_key,
                 model_name=getattr(cfg, 'gemini_model_name', 'gemini-1.5-flash'),
                 temperature=getattr(cfg, 'gemini_temperature', 0.3),
-                max_output_tokens=getattr(cfg, 'gemini_max_output_tokens', 2048)
+                max_output_tokens=getattr(cfg, 'gemini_max_output_tokens', 2048),
+                prompt_builder=HandwrittenPromptBuilder.from_config(cfg),
             )
 
             if ptype == "hybrid" or getattr(cfg, 'fallback_enabled', True):

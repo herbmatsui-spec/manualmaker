@@ -1,0 +1,19 @@
+{
+    "name": "compact",
+    "description": "コンパクトレイアウトPDFテンプレート（余白削減・文字拡大）",
+    "parent": "default",
+    "layout": "compact",
+    "sections_order": ["title", "summary", "key_points", "sections", "glossary"],
+    "font_size": 13,
+    "font_name": "JPFont",
+    "margin": 12,
+    "compact_mode": true,
+    "emoji_enabled": false,
+    "title_font_size": 22,
+    "header_font_size": 16,
+    "body_line_height": 6,
+    "header_line_height": 8,
+    "header_space_after": 2,
+    "bullet_space_after": 1,
+    "page_break_before_diagram": false
+}

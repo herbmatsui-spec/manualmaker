@@ -62,6 +62,15 @@ class AppConfig:
     web_cors_origins: List[str] = field(default_factory=lambda: ["*"])
     web_upload_max_mb: int = 100
 
+    # 手書き文字起こしプロンプト設定
+    prompt_layout: str = "horizontal"
+    prompt_domain_terms: List[str] = field(default_factory=list)
+    prompt_has_diagrams: bool = False
+    prompt_low_quality_mode: bool = False
+    prompt_strict_mode: bool = True
+    prompt_custom_rules: List[str] = field(default_factory=list)
+    generate_diagram: bool = True
+
 
     
     # 音声合成設定
@@ -72,6 +81,11 @@ class AppConfig:
     
     # ファイルパス設定
     usb_monitor_paths: List[str] = field(default_factory=list)  # 監視するUSBドライブパスリスト
+    usb_auto_detect: bool = True  # USB自動検出有効/無効
+    usb_poll_interval: float = 1.0  # polling間隔（秒）
+
+    # i18n設定
+    default_language: str = "ja"  # デフォルト言語
     output_directory: Path = field(default_factory=lambda: Path("./output"))
     temp_directory: Path = field(default_factory=lambda: Path("./temp"))
     
@@ -84,6 +98,8 @@ class AppConfig:
         """初期化後の処理"""
         if self.supported_extensions is None:
             self.supported_extensions = ['.pdf']
+        if self.usb_monitor_paths is None:
+            self.usb_monitor_paths = []
     
     # Backward compatibility properties
     @property
@@ -131,11 +147,6 @@ class AppConfig:
     def use_emojis(self) -> bool:
         """Backward compatibility"""
         return False
-    
-    @property
-    def generate_diagram(self) -> bool:
-        """Backward compatibility"""
-        return True
     
     @property
     def diagram_theme(self) -> str:
@@ -189,6 +200,9 @@ class AppConfig:
         # ファイルパス設定
         usb_monitor_paths_str = os.getenv("USB_MONITOR_PATHS", "")
         usb_monitor_paths = [p.strip() for p in usb_monitor_paths_str.split(",") if p.strip()] if usb_monitor_paths_str else []
+        usb_auto_detect = os.getenv("USB_AUTO_DETECT", "True").lower() in ("true", "1", "yes")
+        usb_poll_interval = _safe_float("USB_POLL_INTERVAL", 1.0)
+        default_language = os.getenv("APP_LANGUAGE", "ja").lower()
         
         output_dir = os.getenv("OUTPUT_DIRECTORY", "./output")
         temp_dir = os.getenv("TEMP_DIRECTORY", "./temp")
@@ -204,6 +218,23 @@ class AppConfig:
         web_port = _safe_int("WEB_PORT", 8000)
         web_upload_max_mb = _safe_int("WEB_UPLOAD_MAX_MB", 100)
 
+        prompt_layout = os.getenv("PROMPT_LAYOUT", "horizontal").lower()
+        if prompt_layout not in ("horizontal", "vertical"):
+            prompt_layout = "horizontal"
+        prompt_domain_terms = [
+            term.strip()
+            for term in os.getenv("PROMPT_DOMAIN_TERMS", "").split(",")
+            if term.strip()
+        ]
+        prompt_has_diagrams = os.getenv("PROMPT_HAS_DIAGRAMS", "False").lower() in ("true", "1", "yes")
+        prompt_low_quality_mode = os.getenv("PROMPT_LOW_QUALITY_MODE", "False").lower() in ("true", "1", "yes")
+        prompt_strict_mode = os.getenv("PROMPT_STRICT_MODE", "True").lower() in ("true", "1", "yes")
+        prompt_custom_rules = [
+            rule.strip()
+            for rule in os.getenv("PROMPT_CUSTOM_RULES", "").splitlines()
+            if rule.strip()
+        ]
+
         return cls(
             google_cloud_project_id=google_cloud_project_id,
             vision_api=vision_api,
@@ -216,11 +247,20 @@ class AppConfig:
             web_host=web_host,
             web_port=web_port,
             web_upload_max_mb=web_upload_max_mb,
+            prompt_layout=prompt_layout,
+            prompt_domain_terms=prompt_domain_terms,
+            prompt_has_diagrams=prompt_has_diagrams,
+            prompt_low_quality_mode=prompt_low_quality_mode,
+            prompt_strict_mode=prompt_strict_mode,
+            prompt_custom_rules=prompt_custom_rules,
             tts_language_code=tts_language_code,
             tts_voice_name=tts_voice_name,
             tts_speaking_rate=tts_speaking_rate,
             tts_pitch=tts_pitch,
             usb_monitor_paths=usb_monitor_paths,
+            usb_auto_detect=usb_auto_detect,
+            usb_poll_interval=usb_poll_interval,
+            default_language=default_language,
 
             output_directory=Path(output_dir),
             temp_directory=Path(temp_dir),

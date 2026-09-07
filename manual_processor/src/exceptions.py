@@ -61,3 +61,38 @@ class PDFGenerationError(OutputGenerationError):
 class DocxGenerationError(OutputGenerationError):
     """Exception raised for Word document generation errors"""
     pass
+
+
+class TemplateNotFoundError(ProcessingError):
+    """Exception raised when a template cannot be found"""
+    pass
+
+
+class TemplateValidationError(ProcessingError):
+    """Exception raised when template validation fails"""
+    pass
+
+
+class EncryptionError(ProcessingError):
+    """Exception raised for encryption/decryption errors"""
+    pass
+
+
+class AuditLogError(ProcessingError):
+    """Exception raised for audit logging errors"""
+    pass
+
+
+class USBDeviceError(ProcessingError):
+    """Exception raised for USB device errors"""
+    pass
+
+
+class I18nTranslationError(ProcessingError):
+    """Exception raised for i18n translation errors"""
+    pass
+
+
+class PromptEngineError(ProcessingError):
+    """Exception raised while building or validating transcription prompts"""
+    pass

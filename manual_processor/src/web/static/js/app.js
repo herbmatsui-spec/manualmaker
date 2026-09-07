@@ -11,6 +11,9 @@ document.addEventListener('DOMContentLoaded', () => {
     const startBtn = document.getElementById('start-btn');
     const compactToggle = document.getElementById('compact-layout-toggle');
     const emojiToggle = document.getElementById('use-emojis-toggle');
+    const promptStrictToggle = document.getElementById('prompt-strict-toggle');
+    const promptDiagramsToggle = document.getElementById('prompt-diagrams-toggle');
+    const promptLayoutSelect = document.getElementById('prompt-layout-select');
 
     const progressSection = document.getElementById('progress-section');
     const progressFill = document.getElementById('progress-fill');
@@ -125,7 +128,10 @@ document.addEventListener('DOMContentLoaded', () => {
         try {
             const options = {
                 compact_layout: compactToggle.checked,
-                use_emojis: emojiToggle.checked
+                use_emojis: emojiToggle.checked,
+                prompt_strict_mode: promptStrictToggle.checked,
+                prompt_has_diagrams: promptDiagramsToggle.checked,
+                prompt_layout: promptLayoutSelect.value
             };
 
             const res = await fetch(`/api/process/${currentFileId}`, {

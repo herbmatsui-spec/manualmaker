@@ -135,6 +135,25 @@ class ManualProcessorGUI(tk.Tk):
             variable=self.generate_diagram_var
         )
         diagram_check.pack(side=tk.LEFT, padx=(0, 15))
+
+        self.prompt_strict_var = tk.BooleanVar(value=True)
+        strict_check = ttk.Checkbutton(
+            options_frame,
+            text="厳格モード（要約禁止）",
+            variable=self.prompt_strict_var
+        )
+        strict_check.pack(side=tk.LEFT, padx=(0, 15))
+
+        ttk.Label(options_frame, text="レイアウト:").pack(side=tk.LEFT, padx=(10, 5))
+        self.prompt_layout_var = tk.StringVar(value="horizontal")
+        layout_combo = ttk.Combobox(
+            options_frame,
+            textvariable=self.prompt_layout_var,
+            values=["horizontal", "vertical"],
+            width=10,
+            state="readonly"
+        )
+        layout_combo.pack(side=tk.LEFT, padx=(0, 5))
         
         # Buttons frame
         action_btn_frame = ttk.Frame(main_frame)
@@ -315,6 +334,8 @@ class ManualProcessorGUI(tk.Tk):
         compact = self.compact_layout_var.get()
         use_emojis = self.use_emojis_var.get()
         self.config.generate_diagram = self.generate_diagram_var.get()
+        self.config.prompt_layout = self.prompt_layout_var.get()
+        self.config.prompt_strict_mode = self.prompt_strict_var.get()
         total_files = len(pdf_files)
 
         def on_step_progress(status: ProgressStatus):

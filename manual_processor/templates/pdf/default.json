@@ -1,0 +1,19 @@
+{
+    "name": "default",
+    "description": "標準的なPDFテンプレート",
+    "parent": null,
+    "layout": "standard",
+    "sections_order": ["title", "summary", "key_points", "sections", "glossary"],
+    "font_size": 11,
+    "font_name": "JPFont",
+    "margin": 15,
+    "compact_mode": false,
+    "emoji_enabled": false,
+    "title_font_size": 20,
+    "header_font_size": 14,
+    "body_line_height": 8,
+    "header_line_height": 10,
+    "header_space_after": 4,
+    "bullet_space_after": 2,
+    "page_break_before_diagram": true
+}

@@ -54,3 +54,17 @@ def test_mermaid_validate_empty():
     assert response.status_code == 200
     data = response.json()
     assert data["valid"] is False
+
+
+def test_process_options_accepts_prompt_settings():
+    from src.web.app import ProcessOptions
+
+    options = ProcessOptions(
+        prompt_layout="vertical",
+        prompt_strict_mode=True,
+        prompt_has_diagrams=True,
+    )
+
+    assert options.prompt_layout == "vertical"
+    assert options.prompt_strict_mode is True
+    assert options.prompt_has_diagrams is True

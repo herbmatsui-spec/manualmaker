@@ -7,6 +7,7 @@ from src.gemini_processor import (
     GeminiAPIError
 )
 from src.text_processor import Section
+from src.prompt_engine.prompt_builder import HandwrittenPromptBuilder, PromptConfig
 
 class TestGeminiProcessor:
     """GeminiProcessor クライアント移行後の GeminiProcessor クラスのテスト"""
@@ -63,6 +64,25 @@ class TestGeminiProcessor:
             
             assert "要約結果" in result
             mock_client_instance.models.generate_content.assert_called_once()
+
+    def test_summarize_text_uses_handwritten_context(self):
+        with patch('src.gemini_processor.genai.Client') as mock_client_class:
+            mock_client_instance = mock_client_class.return_value
+            mock_response = Mock()
+            mock_response.text = "要約結果"
+            mock_client_instance.models.generate_content.return_value = mock_response
+
+            builder = HandwrittenPromptBuilder(PromptConfig(
+                layout="vertical",
+                domain_terms=["固有名詞"],
+            ))
+            processor = GeminiProcessor(api_key="test-key", prompt_builder=builder)
+
+            processor.summarize_text("テストテキスト")
+
+            prompt = mock_client_instance.models.generate_content.call_args.kwargs["contents"]
+            assert "縦書き" in prompt
+            assert "固有名詞" in prompt
 
     def test_summarize_text_multiple_chunks(self):
         """複数チャンクに分割された場合、各チャンクが要約されること"""

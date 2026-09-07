@@ -26,9 +26,16 @@ class BatchJob:
 class BatchProcessor:
     """Batch document processing manager"""
 
-    def __init__(self, processor_instance: Any):
+    def __init__(self, processor_instance: Any, prompt_builder: Any = None):
         self.processor = processor_instance
+        self.prompt_builder = prompt_builder or getattr(processor_instance, "prompt_builder", None)
         self.queue: PriorityQueue = PriorityQueue()
+
+    def get_prompt_context(self) -> Optional[str]:
+        """Return one shared prompt context for the whole batch."""
+        if self.prompt_builder is None:
+            return None
+        return self.prompt_builder.build_processing_context()
 
     def add_file(self, file_path: Path, priority: int = 10) -> None:
         """Add file to processing queue (lower integer = higher priority)"""
@@ -59,6 +66,7 @@ class BatchProcessor:
         processed_count = 0
         failure_count = 0
 
+        prompt_context = self.get_prompt_context()
         logger.info(f"BatchProcessor: Starting processing of {total_jobs} jobs...")
 
         while not self.queue.empty():
@@ -71,7 +79,13 @@ class BatchProcessor:
 
             if progress_tracker:
                 pct = (processed_count / total_jobs) * 100.0 if total_jobs > 0 else 100.0
-                progress_tracker.update("batch_processing", pct, f"Processing {job.file_path.name} ({processed_count}/{total_jobs})")
+                details = {"prompt_context": prompt_context} if prompt_context else {}
+                progress_tracker.update(
+                    "batch_processing",
+                    pct,
+                    f"Processing {job.file_path.name} ({processed_count}/{total_jobs})",
+                    details=details,
+                )
 
             try:
                 res = self.processor.process_pdf(job.file_path)

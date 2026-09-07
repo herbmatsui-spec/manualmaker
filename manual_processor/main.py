@@ -17,6 +17,23 @@ from src.logger import setup_logger, get_logger
 from src.orchestrator import DocumentOrchestrator
 
 
+def apply_prompt_cli_options(config: Config, args) -> Config:
+    """Apply explicitly supplied prompt options to the loaded configuration."""
+    if args.prompt_layout:
+        config.prompt_layout = args.prompt_layout
+    if args.prompt_strict:
+        config.prompt_strict_mode = True
+    if args.prompt_no_diagrams:
+        config.prompt_has_diagrams = False
+    if args.prompt_domain_terms is not None:
+        config.prompt_domain_terms = [
+            term.strip()
+            for term in args.prompt_domain_terms.split(",")
+            if term.strip()
+        ]
+    return config
+
+
 def main():
     """Main entry point for the application"""
     # Parse command line arguments
@@ -74,7 +91,30 @@ def main():
         action="store_true",
         help="バージョン情報を表示"
     )
-    
+    parser.add_argument(
+        "--prompt-layout",
+        type=str,
+        choices=["horizontal", "vertical"],
+        default=None,
+        help="手書き文書のレイアウト（デフォルト: config設定）"
+    )
+    parser.add_argument(
+        "--prompt-strict",
+        action="store_true",
+        help="厳格モード（要約・自動補正を禁止）"
+    )
+    parser.add_argument(
+        "--prompt-no-diagrams",
+        action="store_true",
+        help="図表構造化を無効化"
+    )
+    parser.add_argument(
+        "--prompt-domain-terms",
+        type=str,
+        default=None,
+        help="専門用語（カンマ区切り）"
+    )
+
     args = parser.parse_args()
     
     # Setup logging
@@ -117,6 +157,7 @@ def main():
     try:
         # Initialize configuration
         config = Config.get_instance()
+        apply_prompt_cli_options(config, args)
         
         # Update output directory if specified
         config.output_directory = Path(args.output)

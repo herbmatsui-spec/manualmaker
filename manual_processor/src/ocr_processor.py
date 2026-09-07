@@ -45,7 +45,8 @@ class OCRProcessor:
     """Google Cloud Vision APIを使用したOCR処理クラス"""
     
     def __init__(self, project_id: Optional[str] = None, credentials_path: Optional[str] = None, 
-                 api_key: Optional[str] = None, timeout: int = 30, max_results: int = 10):
+                 api_key: Optional[str] = None, timeout: int = 30, max_results: int = 10,
+                 prompt_builder=None):
         """
         Args:
             project_id: Google Cloud プロジェクトID（オプショナル）
@@ -60,6 +61,7 @@ class OCRProcessor:
         self.project_id = project_id or os.getenv("GOOGLE_CLOUD_PROJECT")
         self.timeout = timeout
         self.max_results = max_results
+        self.prompt_builder = prompt_builder
         
         # 認証情報の設定
         if credentials_path:
@@ -98,7 +100,25 @@ class OCRProcessor:
             抽出されたテキスト文字列
         """
         result = self.perform_ocr_on_image(image)
-        return result.text if result and result.text else ""
+        return self.post_process_text(result.text) if result and result.text else ""
+
+    def build_transcription_prompt(self) -> str:
+        """Build the optional handwritten transcription prompt."""
+        if self.prompt_builder is None:
+            return ""
+        return self.prompt_builder.build_handwritten_transcription_prompt()
+
+    def post_process_text(self, text: str) -> str:
+        """Apply configured OCR text handlers without changing API output types."""
+        if not text or self.prompt_builder is None:
+            return text
+
+        from src.prompt_engine.handlers.noise_handler import NoiseHandler
+        from src.prompt_engine.handlers.ruby_handler import RubyHandler
+
+        cleaned = RubyHandler().post_process_text(text)
+        cleaned = NoiseHandler().remove_noise_from_text(cleaned)
+        return cleaned
     
     def is_service_available(self) -> bool:
         """Vision APIサービスが利用可能かチェック"""
@@ -260,6 +280,7 @@ class OCRProcessor:
             try:
                 result = self.perform_ocr_on_image(image, language_hints)
                 result.page_number = page_number
+                result.text = self.post_process_text(result.text)
                 results.append(result)
                 
                 # 進捗報告

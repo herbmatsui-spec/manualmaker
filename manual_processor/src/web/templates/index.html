@@ -44,6 +44,23 @@
                         <span class="toggle-custom"></span>
                         見出しに絵文字を自動挿入
                     </label>
+                    <label class="toggle-label">
+                        <input type="checkbox" id="prompt-strict-toggle" checked>
+                        <span class="toggle-custom"></span>
+                        厳格な文字起こしルール
+                    </label>
+                    <label class="toggle-label">
+                        <input type="checkbox" id="prompt-diagrams-toggle">
+                        <span class="toggle-custom"></span>
+                        図解・矢印を構造化
+                    </label>
+                    <label class="toggle-label">
+                        レイアウト:
+                        <select id="prompt-layout-select">
+                            <option value="horizontal">横書き</option>
+                            <option value="vertical">縦書き</option>
+                        </select>
+                    </label>
                 </div>
 
                 <button class="primary-btn" id="start-btn" disabled>AI パイプライン処理開始</button>

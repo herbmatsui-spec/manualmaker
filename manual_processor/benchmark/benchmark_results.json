@@ -1,0 +1,50 @@
+{
+  "timestamp": 1788759525.310133,
+  "results": [
+    {
+      "name": "cache_operations",
+      "duration_seconds": 0.038623472999915975,
+      "iterations": 10,
+      "avg_ms": 3.8623472999915975,
+      "min_ms": 0.8096209999166604,
+      "max_ms": 24.806032000014966,
+      "metadata": {}
+    },
+    {
+      "name": "text_chunking",
+      "duration_seconds": 2.0160454859997117,
+      "iterations": 5,
+      "avg_ms": 403.20909719994233,
+      "min_ms": 108.55063799999698,
+      "max_ms": 1419.6648239999377,
+      "metadata": {}
+    },
+    {
+      "name": "pii_masking",
+      "duration_seconds": 0.36579397800051083,
+      "iterations": 10,
+      "avg_ms": 36.57939780005108,
+      "min_ms": 19.120338999982778,
+      "max_ms": 85.11516099997607,
+      "metadata": {}
+    },
+    {
+      "name": "language_detection",
+      "duration_seconds": 0.03588593599988599,
+      "iterations": 10,
+      "avg_ms": 3.5885935999885987,
+      "min_ms": 2.822768999976688,
+      "max_ms": 5.776031000095827,
+      "metadata": {}
+    },
+    {
+      "name": "template_loading",
+      "duration_seconds": 0.4559517750003579,
+      "iterations": 20,
+      "avg_ms": 22.797588750017894,
+      "min_ms": 0.18026699990514317,
+      "max_ms": 450.3054729998439,
+      "metadata": {}
+    }
+  ]
+}

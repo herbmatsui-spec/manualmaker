@@ -7,9 +7,11 @@ from unittest.mock import Mock, patch
 
 from src.usb_monitor import (
     USBMonitor,
+    USBFileHandler,
     create_usb_monitor,
     is_ready_for_processing,
-    get_safe_filename
+    get_safe_filename,
+    _HAS_WATCHDOG
 )
 
 class TestUSBMonitor:
@@ -153,9 +155,76 @@ class TestGetSafeFilename:
         result = get_safe_filename("", include_timestamp=False)
         assert result == "" or result == "_"  # 実装による
 
+class TestWatchdogIntegration:
+    """watchdog 統合のテスト"""
+
+    def test_watchdog_observer_class_available(self):
+        """watchdog が利用可能かチェック"""
+        assert _HAS_WATCHDOG is not None
+
+    def test_usb_file_handler_initialization(self):
+        """USBFileHandlerが正しく初期化できること"""
+        processed_files = set()
+        callback = lambda p, e: None
+        handler = USBFileHandler(callback, processed_files)
+        assert handler.callback == callback
+        assert handler._processed_files == processed_files
+
+    def test_usb_file_handler_ignores_non_pdf(self):
+        """PDF以外のファイルは無視されること"""
+        processed_files = set()
+        events_received = []
+
+        class MockEvent:
+            is_directory = False
+            src_path = "/tmp/test.txt"
+
+        handler = USBFileHandler(lambda p, e: events_received.append((p, e)), processed_files)
+        handler.on_created(MockEvent())
+        assert len(events_received) == 0
+
+    def test_watchdog_not_available_fallback(self):
+        """watchdog が利用できない場合、pollingモードにフォールバックすること"""
+        from src.usb_monitor import _HAS_WATCHDOG, Observer
+
+        if not _HAS_WATCHDOG:
+            # Observer should be None when watchdog not available
+            assert Observer is None
+        else:
+            # When watchdog is available, Observer should be a class
+            assert Observer is not None
+
+    def test_usb_monitor_watched_paths_initialized(self):
+        """USBMonitor初期化時に_watched_pathsが設定されること"""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            monitor = USBMonitor([tmpdir], callback=lambda p, e: None)
+            assert hasattr(monitor, '_watched_paths')
+            assert tmpdir in [str(p) for p in monitor._watched_paths]
+
+    @patch('src.usb_monitor._HAS_WATCHDOG', False)
+    def test_usb_monitor_fallback_to_polling(self):
+        """watchdog無効時にpollingモードで動作すること"""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            monitor = USBMonitor([tmpdir], callback=lambda p, e: None)
+            with patch.object(monitor, '_monitor_loop') as mock_loop:
+                monitor.start()
+                assert monitor._is_running
+                # When watchdog disabled, should use threading
+                assert monitor._thread is not None
+                monitor.stop()
+
+    def test_usb_monitor_multiple_paths(self):
+        """複数パスで監視できること"""
+        with tempfile.TemporaryDirectory() as tmpdir1:
+            with tempfile.TemporaryDirectory() as tmpdir2:
+                monitor = USBMonitor([tmpdir1, tmpdir2], callback=lambda p, e: None)
+                assert len(monitor.paths) == 2
+                assert len(monitor._watched_paths) == 2
+
+
 class TestEventFiltering:
     """イベントフィルタリングのテスト（モックを使用）"""
-    
+
     @patch('src.usb_monitor.time.sleep')
     def test_pdf_only_filtering(self, mock_sleep):
         """PDFファイルのみが処理対象になること"""

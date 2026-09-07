@@ -13,12 +13,62 @@ try:
     import win32file
     import win32con
     _HANDLE_INVALID = 0
+    _HAS_WIN32 = True
 except ImportError:
-    # Fallback for non-Windows or when pywin32 not available
     _HANDLE_INVALID = None
+    _HAS_WIN32 = False
+    win32file = None
+    win32con = None
+
+try:
+    from watchdog.observers import Observer
+    from watchdog.events import FileSystemEventHandler
+    _HAS_WATCHDOG = True
+except ImportError:
+    Observer = None
+    FileSystemEventHandler = None
+    _HAS_WATCHDOG = False
+
+class USBFileHandler:
+    """watchdog の FileSystemEventHandler を継承した USB ファイル処理ハンドラ"""
+
+    def __init__(self, callback: Callable[[Path, str], None], processed_files: set):
+        self.callback = callback
+        self._processed_files = processed_files
+
+    def on_created(self, event):
+        """ファイル作成時のイベントハンドラ"""
+        if event.is_directory:
+            return
+        file_path = Path(event.src_path)
+        if file_path.suffix.lower() != ".pdf":
+            return
+        if file_path.stat().st_size == 0:
+            return
+        file_key = f"{file_path}|{file_path.stat().st_mtime}"
+        if file_key in self._processed_files:
+            return
+        self._processed_files.add(file_key)
+        self.callback(str(file_path), "created")
+
+    def on_modified(self, event):
+        """ファイル変更時のイベントハンドラ"""
+        if event.is_directory:
+            return
+        file_path = Path(event.src_path)
+        if file_path.suffix.lower() != ".pdf":
+            return
+        if file_path.stat().st_size == 0:
+            return
+        file_key = f"{file_path}|{file_path.stat().st_mtime}"
+        if file_key in self._processed_files:
+            return
+        self._processed_files.add(file_key)
+        self.callback(str(file_path), "modified")
+
 
 class USBMonitor:
-    """USBドライブ監視クラス"""
+    """USBドライブ監視クラス（watchdog 使用）"""
     def __init__(self, paths: List[str], callback: Callable[[Path, str], None]):
         """
         Args:
@@ -32,6 +82,7 @@ class USBMonitor:
         self._thread = None
         self._is_running = False
         self._processed_files: set = set()
+        self._watched_paths: set = set(self.paths)
 
     @staticmethod
     def _detect_removable_drives() -> List[Path]:
@@ -51,22 +102,51 @@ class USBMonitor:
         return drives
 
     def start(self) -> None:
-        """監視を開始する"""
+        """監視を開始する（watchdog 使用）"""
         if self._is_running:
             logger.debug("監視はすでに開始済みです。")
             return
-        
+
+        self._stop_event.clear()
+
+        if _HAS_WATCHDOG and Observer is not None:
+            try:
+                self._observer = Observer()
+                event_handler = USBFileHandler(self.callback, self._processed_files)
+                for path in self.paths:
+                    if path.exists():
+                        self._observer.schedule(event_handler, str(path), recursive=True)
+                        self._watched_paths.add(path)
+                        logger.debug(f"watchdog 監視登録: {path}")
+                self._observer.start()
+                self._is_running = True
+                logger.info(f"USB監視開始（watchdog使用）。監視対象パス: {[str(p) for p in self.paths]}")
+                return
+            except Exception as e:
+                logger.warning(f"watchdog 初期化失敗: {e}。pollingモードにフォールバックします。")
+
         self._thread = threading.Thread(target=self._monitor_loop, daemon=True)
         self._thread.start()
         self._is_running = True
-        logger.info(f"USB監視開始。監視対象パス: {[str(p) for p in self.paths]}")
+        logger.info(f"USB監視開始（pollingモード）。監視対象パス: {[str(p) for p in self.paths]}")
 
     def stop(self) -> None:
         """監視を停止する"""
         self._stop_event.set()
+
+        if self._observer is not None:
+            try:
+                self._observer.stop()
+                self._observer.join(timeout=5.0)
+                logger.debug("watchdog observer 停止完了")
+            except Exception as e:
+                logger.warning(f"watchdog observer 停止エラー: {e}")
+
         if self._thread and self._thread.is_alive():
             self._thread.join(timeout=3.0)
+
         self._is_running = False
+        self._watched_paths.clear()
         logger.info("USB監視停止")
 
     def _monitor_loop(self) -> None:
@@ -107,7 +187,7 @@ class USBMonitor:
                             logger.debug(f"ファイルアクセスエラー: {e}")
                             continue
                 
-                time.sleep(3.0)
+                time.sleep(1.0)  # watchdog が届かないイベント用フォールバック
         except Exception as e:
             logger.error(f"監視スレッドでエラーが発生: {e}")
         finally:
@@ -122,7 +202,7 @@ class USBMonitor:
         if not file_path.exists():
             return True
 
-        if win32file and win32con:
+        if _HAS_WIN32 and win32file and win32con:
             try:
                 handle = win32file.CreateFile(
                     str(file_path),

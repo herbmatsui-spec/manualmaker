@@ -59,7 +59,13 @@ class DocumentOrchestrator:
         # Default generation options
         self.compact_layout = False
         self.use_emojis = False
-        
+
+        # Prompt builder options
+        self.prompt_layout = getattr(self.config, 'prompt_layout', 'horizontal')
+        self.prompt_strict_mode = getattr(self.config, 'prompt_strict_mode', True)
+        self.prompt_has_diagrams = getattr(self.config, 'prompt_has_diagrams', False)
+        self.prompt_domain_terms = list(getattr(self.config, 'prompt_domain_terms', []))
+
         # Callbacks
         self.progress_callback: Optional[Callable] = None
         self.completion_callback: Optional[Callable] = None

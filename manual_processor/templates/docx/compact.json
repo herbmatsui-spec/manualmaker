@@ -1,0 +1,16 @@
+{
+    "name": "compact",
+    "description": "コンパクトレイアウトWord文書テンプレート",
+    "parent": "default",
+    "layout": "compact",
+    "font_size": 13,
+    "compact_mode": true,
+    "emoji_enabled": false,
+    "title_font_size": 22,
+    "header_font_size": 16,
+    "subheader_font_size": 14,
+    "bullet_indent": 0.25,
+    "paragraph_spacing": 2,
+    "line_spacing": 1.0,
+    "page_break_before_diagram": false
+}

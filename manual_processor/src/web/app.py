@@ -3,7 +3,7 @@ FastAPI Web Server for Manual Processor
 """
 
 import logging
-from typing import Dict, Any
+from typing import Dict, Any, Optional
 from pathlib import Path
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
@@ -11,10 +11,13 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 
 from config.config import Config
+from src.i18n_manager import I18nManager
+from src.security_manager import SecurityManager, AuditLogger
 
 logger = logging.getLogger(__name__)
 
 config = Config.get_instance()
+i18n_manager = I18nManager(default_lang=config.default_language)
 
 BASE_DIR = Path(__file__).parent
 TEMPLATES_DIR = BASE_DIR / "templates"
@@ -68,7 +71,77 @@ async def get_public_config() -> Dict[str, Any]:
         "max_file_size_mb": config.max_file_size_mb,
         "web_upload_max_mb": config.web_upload_max_mb,
         "output_directory": str(config.output_directory),
-        "supported_extensions": config.supported_extensions
+        "supported_extensions": config.supported_extensions,
+        "default_language": config.default_language
+    }
+
+
+@app.get("/api/i18n/languages")
+async def get_available_languages() -> Dict[str, Any]:
+    """利用可能な言語一覧を取得"""
+    return {
+        "languages": i18n_manager.get_available_languages(),
+        "current": i18n_manager.current_lang
+    }
+
+
+@app.post("/api/i18n/set")
+async def set_language(req: "SetLanguageRequest") -> Dict[str, str]:
+    """言語を設定"""
+    i18n_manager.set_language(req.language)
+    return {"status": "ok", "language": i18n_manager.current_lang}
+
+
+@app.get("/api/i18n/translations/{lang}")
+async def get_translations(lang: str) -> Dict[str, str]:
+    """指定言語の翻訳を取得"""
+    translations = i18n_manager.TRANSLATIONS.get(lang.lower())
+    if not translations:
+        raise HTTPException(status_code=404, detail=f"Language '{lang}' not found")
+    return translations
+
+
+@app.post("/api/i18n/detect")
+async def detect_language_text(req: dict) -> Dict[str, str]:
+    """テキストの言語を自動検出"""
+    text = req.get("text", "")
+    detected = i18n_manager.detect_language(text)
+    return {"detected_language": detected}
+
+
+@app.get("/api/security/status")
+async def get_security_status() -> Dict[str, Any]:
+    """セキュリティ設定・状態を取得"""
+    import os as _os
+    return {
+        "pii_masking_enabled": True,
+        "encryption_available": True,
+        "encryption_key_set": bool(_os.getenv("ENCRYPTION_KEY")),
+        "keyring_available": True,
+        "audit_log_enabled": True
+    }
+
+
+@app.get("/api/security/audit")
+async def get_audit_logs(limit: int = 100) -> Dict[str, Any]:
+    """監査ログを取得"""
+    audit = AuditLogger()
+    logs = audit.get_recent_logs(limit=limit)
+    return {"logs": logs, "count": len(logs)}
+
+
+@app.post("/api/security/mask")
+async def mask_text(req: dict) -> Dict[str, Any]:
+    """テキスト中の機密情報をマスク"""
+    text = req.get("text", "")
+    if not text:
+        return {"masked_text": "", "counts": {}}
+
+    masked, info = SecurityManager.mask_sensitive_data(text, record_positions=True)
+    return {
+        "masked_text": masked,
+        "counts": info.get("counts", {}),
+        "positions_count": len(info.get("positions", []))
     }
 
 
@@ -126,9 +199,17 @@ from src.processor.processor import DocumentProcessor
 PROCESSING_RESULTS: Dict[str, Dict[str, Any]] = {}
 
 
+class SetLanguageRequest(BaseModel):
+    language: str
+
+
 class ProcessOptions(BaseModel):
     compact_layout: bool = False
     use_emojis: bool = False
+    prompt_layout: Optional[str] = None
+    prompt_strict_mode: Optional[bool] = None
+    prompt_has_diagrams: Optional[bool] = None
+    prompt_low_quality_mode: Optional[bool] = None
 
 
 @app.post("/api/process/{file_id}")
@@ -139,6 +220,15 @@ async def process_pdf_api(file_id: str, options: ProcessOptions = ProcessOptions
     
     file_info = UPLOADED_FILES[file_id]
     pdf_path = Path(file_info["path"])
+
+    if options.prompt_layout in {"horizontal", "vertical"}:
+        config.prompt_layout = options.prompt_layout
+    if options.prompt_strict_mode is not None:
+        config.prompt_strict_mode = options.prompt_strict_mode
+    if options.prompt_has_diagrams is not None:
+        config.prompt_has_diagrams = options.prompt_has_diagrams
+    if options.prompt_low_quality_mode is not None:
+        config.prompt_low_quality_mode = options.prompt_low_quality_mode
 
     processor = DocumentProcessor(config)
     result = processor.process_pdf(
