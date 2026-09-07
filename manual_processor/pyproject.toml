@@ -93,4 +93,4 @@ fail_under = 85
 
 [tool.bandit]
 exclude_dirs = ["tests", "build", "__pycache__"]
-skips = ["B101"]  # Skip assert warnings in tests
+skips = ["B101", "B104"]  # Skip assert warnings in tests

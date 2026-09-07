@@ -76,7 +76,7 @@ class WebSettings(BaseModel):
     """Web server settings"""
     model_config = ConfigDict(extra="ignore")
     
-    host: str = "0.0.0.0"
+    host: str = "0.0.0.0"  # nosec B104 - needed for container networking
     port: int = Field(default=8000, ge=1, le=65535)
     cors_origins: List[str] = Field(default_factory=lambda: ["http://localhost:3000", "http://localhost:8000"])
     upload_max_mb: int = Field(default=100, ge=1, le=1000)

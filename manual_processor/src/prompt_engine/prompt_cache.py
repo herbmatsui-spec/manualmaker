@@ -39,7 +39,7 @@ class PromptCache:
             language or "ja",
         ]
         key_str = "|".join(key_parts)
-        return hashlib.md5(key_str.encode()).hexdigest()
+        return hashlib.md5(key_str.encode(), usedforsecurity=False).hexdigest()
 
     def get(self, layout: str, domain_terms: list, has_diagrams: bool,
             low_quality: bool, language: str) -> Optional[str]:
