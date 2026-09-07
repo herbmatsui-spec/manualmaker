@@ -93,41 +93,46 @@ class DocumentOrchestrator:
     def process_file(self, file_path: Path, callback: Optional[Callable] = None, compact_layout: bool = False, use_emojis: bool = False) -> ProcessingResult:
         """
         Process a single file synchronously
-        
+
         Args:
             file_path: Path to the file to process
             callback: Optional callback function for progress updates
             compact_layout: If True, generate compact layout with larger text and less whitespace
             use_emojis: If True, insert emojis into generated documents
-            
+
         Returns:
             ProcessingResult object
         """
-        try:
-            self.logger.info(f"Starting synchronous processing of {file_path}")
-            result = self.processor.process_pdf(file_path, compact_layout=compact_layout, use_emojis=use_emojis)
-            
-            if result["success"]:
-                self.processed_files.append(file_path)
-                return ProcessingResult(
-                    success=True,
-                    message=f"Successfully processed {file_path.name}",
-                    data=result
-                )
-            else:
-                self.failed_files.append((file_path, result["error"]))
+        from src.observability import metrics as obs
+        with obs.job_timer("process_file"):
+            try:
+                self.logger.info(f"Starting synchronous processing of {file_path}")
+                result = self.processor.process_pdf(file_path, compact_layout=compact_layout, use_emojis=use_emojis)
+
+                if result["success"]:
+                    self.processed_files.append(file_path)
+                    obs.record_success("process_file")
+                    return ProcessingResult(
+                        success=True,
+                        message=f"Successfully processed {file_path.name}",
+                        data=result
+                    )
+                else:
+                    self.failed_files.append((file_path, result["error"]))
+                    obs.record_failure("process_file")
+                    return ProcessingResult(
+                        success=False,
+                        message=f"Failed to process {file_path.name}: {result['error']}",
+                        data=result
+                    )
+            except Exception as e:
+                self.logger.error(f"Error processing {file_path}: {e}")
+                self.failed_files.append((file_path, str(e)))
+                obs.record_failure("process_file")
                 return ProcessingResult(
                     success=False,
-                    message=f"Failed to process {file_path.name}: {result['error']}",
-                    data=result
+                    message=f"Error processing {file_path.name}: {str(e)}"
                 )
-        except Exception as e:
-            self.logger.error(f"Error processing {file_path}: {e}")
-            self.failed_files.append((file_path, str(e)))
-            return ProcessingResult(
-                success=False,
-                message=f"Error processing {file_path.name}: {str(e)}"
-            )
     
     def add_file_to_queue(self, file_path: Path):
         """Add a file to the processing queue"""

@@ -2,7 +2,7 @@ from setuptools import setup, find_packages
 
 setup(
     name="manual_processor",
-    version="2.1.0",
+    version="2.2.0",
     description="Handwritten Manual Processor for Windows with Google Cloud AI",
     author="Developer",
     packages=find_packages(),
@@ -21,7 +21,6 @@ setup(
         "gTTS>=2.5.0",
         "pydub>=0.25.1",
         "tenacity>=8.2.0",
-        "mermaidx>=0.3.0",
         "fastapi>=0.115.0",
         "uvicorn[standard]>=0.30.0",
         "python-multipart>=0.0.9",

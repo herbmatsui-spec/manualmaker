@@ -112,6 +112,9 @@ venv.bak/
 # mkdocs documentation
 /site
 
+# MkDocs site output
+manual_processor/docs/site/
+
 # mypy
 .mypy_cache/
 .dmypy.json
@@ -131,3 +134,18 @@ cython_debug/
 Thumbs.db
 .vscode/
 .idea/
+
+# Application-specific noise
+manual_processor/temp/
+manual_processor/logs/*.log
+manual_processor/output/
+manual_processor/.benchmarks/
+manual_processor/benchmark/benchmark_results.json
+manual_processor/build/
+manual_processor/manual_processor.egg-info/
+manual_processor/manual_processor.egg-info/
+manual_processor/*.egg-info/
+manual_processor/=4.0.0
+manual_processor/新規 テキスト ドキュメント.txt
+manual_processor/coverage.xml
+manual_processor/.coverage*

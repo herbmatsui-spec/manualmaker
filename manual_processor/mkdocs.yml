@@ -1,0 +1,44 @@
+site_name: Manual Processor
+site_description: AI-powered handwritten manual processor — installation, architecture, API, deployment.
+site_author: Manual Processor Team
+repo_url: https://github.com/manualprocessor/manualmaker
+edit_uri: ""
+docs_dir: ../docs/source
+site_dir: ../docs/site
+
+theme:
+  name: material
+  palette:
+    - scheme: default
+      primary: indigo
+      accent: indigo
+      toggle:
+        icon: material/weather-night
+        name: Dark mode
+  features:
+    - navigation.instant
+    - navigation.tracking
+    - navigation.tabs
+    - navigation.sections
+    - toc.follow
+  language: ja
+
+nav:
+  - Home: index.md
+  - Getting Started: getting-started.md
+  - Architecture: architecture.md
+  - API Reference: api/index.md
+  - Deployment: deployment.md
+  - Contributing: contributing.md
+
+plugins:
+  - search
+
+markdown_extensions:
+  - admonition
+  - codehilite
+  - toc:
+      permalink: true
+  - pymdownx.highlight
+  - pymdownx.superfences
+  - pymdownx.tabbed

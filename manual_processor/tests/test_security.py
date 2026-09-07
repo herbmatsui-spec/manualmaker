@@ -127,19 +127,19 @@ class TestPIIMaskingToggle:
     """Test PII masking on/off behavior"""
 
     def test_default_config_masking_disabled(self):
-        from config.config_new import AppConfig
+        from config.config import AppConfig
         config = AppConfig.from_env()
         assert config.pii_masking_enabled is False
 
     def test_env_var_enables_masking(self, monkeypatch):
         monkeypatch.setenv("PII_MASKING_ENABLED", "True")
-        from config.config_new import AppConfig
+        from config.config import AppConfig
         config = AppConfig.from_env()
         assert config.pii_masking_enabled is True
 
     def test_env_var_disables_masking_explicitly(self, monkeypatch):
         monkeypatch.setenv("PII_MASKING_ENABLED", "False")
-        from config.config_new import AppConfig
+        from config.config import AppConfig
         config = AppConfig.from_env()
         assert config.pii_masking_enabled is False
 

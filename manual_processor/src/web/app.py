@@ -52,7 +52,7 @@ app.add_middleware(
 @app.get("/")
 async def serve_dashboard(request: Request):
     """Web UI ダッシュボード画面"""
-    return templates.TemplateResponse("index.html", {"request": request})
+    return templates.TemplateResponse(request, "index.html")
 
 
 @app.get("/api/health")
@@ -619,6 +619,26 @@ async def drive_revoke() -> Dict[str, str]:
     except Exception as e:
         logger.error(f"Drive revoke failed: {e}")
         raise HTTPException(status_code=500, detail=f"解除失敗: {str(e)}")
+
+
+@app.get("/metrics")
+async def prometheus_metrics():
+    """Prometheus exposition endpoint for application metrics."""
+    from fastapi.responses import Response
+    from src.observability import metrics as obs
+
+    body, content_type = obs.render()
+    return Response(content=body, media_type=content_type)
+
+
+@app.get("/api/observability/status")
+async def observability_status() -> Dict[str, Any]:
+    """Return whether the observability backend is active."""
+    from src.observability import metrics as obs
+    return {
+        "enabled": obs.enabled,
+        "backend": "prometheus_client" if obs.enabled else "noop",
+    }
 
 
 
