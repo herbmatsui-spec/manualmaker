@@ -3,7 +3,7 @@
 [![Python Version](https://img.shields.io/badge/python-3.8%2B-blue.svg)](https://www.python.org/)
 [![License](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
 [![Platform](https://img.shields.io/badge/platform-Windows%2010%2F11-win.svg)]()
-[![Tests](https://img.shields.io/badge/tests-99%20passed-brightgreen.svg)]()
+[![Tests](https://img.shields.io/badge/tests-252%20passed-brightgreen.svg)]()
 [![Status](https://img.shields.io/badge/status-production%20ready-brightgreen.svg)]()
 
 スキャンされた手書きマニュアル（PDF）を読み込み、**Google Gemini API** および **Google Cloud Vision API** を活用して高精度なOCR解析・初心者向けの要約および構造化を行い、**PDF**・**Word文書**・**音声ファイル(MP3/WAV)**・**フローチャート画像(PNG)** の複数フォーマットで自動出力するシステムです。
@@ -29,6 +29,9 @@
 - 📦 **マルチフォーマット出力 & ドキュメント生成**
   - 余白調整・絵文字挿入・コンパクトレイアウト対応の PDF / Word ドキュメント生成。
   - Google Cloud TTS / edge-tts / gTTS による多層バックオフ音声合成。
+- ✍️ **手書きPDFプロンプトエンジン**
+  - 一字一句の書き起こし、判読不能文字、ルビ、ノイズ、縦書き・横書き、専門用語、図解、低品質画像に対応。
+  - 日本語・英語・中国語のプロンプト、環境変数による追加ルール、メモリ・ディスクキャッシュに対応。
 
 ---
 
@@ -60,7 +63,7 @@ manual_processor/
 │   ├── processor/           # プロセッサーファクトリー & ハイブリッド切り替え
 │   ├── gui/                 # デスクトップ GUI モジュール
 │   └── web/                 # FastAPI Web UI バックエンド & フロントエンド
-├── tests/                   # pytest テストスイート (全99件)
+├── tests/                   # pytest テストスイート (252件)
 ├── scripts/                 # スタンドアロン exe ビルドスクリプト等
 ├── main.py                  # アプリケーション共通エントリーポイント
 └── requirements.txt         # 依存ライブラリ一覧
@@ -90,6 +93,16 @@ pip install -r requirements.txt
 ```env
 GEMINI_API_KEY=your_gemini_api_key_here
 GOOGLE_API_KEY=your_google_api_key_here
+
+# 手書きPDFプロンプト設定（任意）
+APP_LANGUAGE=ja
+PROMPT_LAYOUT=horizontal
+PROMPT_DOMAIN_TERMS=用語A,用語B
+PROMPT_HAS_DIAGRAMS=False
+PROMPT_LOW_QUALITY_MODE=False
+PROMPT_STRICT_MODE=True
+# 追加ルールは改行区切り
+PROMPT_CUSTOM_RULES=
 ```
 
 ### 3. Web UI モードで起動（推奨）
@@ -120,11 +133,13 @@ python scripts/build_exe.py
 
 ## 🧪 テストの実行
 
-全 99 件のユニットテスト・統合テストを実行します：
+全252件のユニットテスト・統合テストを実行します：
 
 ```bash
 python -m pytest tests/ -v
 ```
+
+現在のテスト件数は252件です。外部AI APIを使用するテストはモックで実行します。
 
 ---
 

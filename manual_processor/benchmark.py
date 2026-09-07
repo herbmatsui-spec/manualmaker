@@ -5,9 +5,12 @@ Measures execution performance of text processing and prompt generation.
 
 import time
 import logging
+from pathlib import Path
+import tempfile
 from src.text_processor import clean_extracted_text, normalize_japanese_text, combine_ocr_results, OCRResult
 from src.security_manager import SecurityManager
 from src.prompt_engine import HandwrittenPromptBuilder, PromptConfig
+from src.cache_manager import CacheManager
 
 logger = logging.getLogger(__name__)
 
@@ -46,6 +49,21 @@ def run_benchmark():
     t1 = time.time()
     print(f"4. build_handwritten_transcription_prompt (100 iterations): {t1 - t0:.4f}s")
 
+    with tempfile.TemporaryDirectory() as cache_dir:
+        cache = CacheManager(cache_dir=Path(cache_dir))
+        cached_builder = HandwrittenPromptBuilder(cache_manager=cache)
+        options = {
+            "layout": "vertical",
+            "domain_terms": ["売上", "利益", "原価", "仕入", "在庫"],
+            "has_diagrams": True,
+            "low_quality": True,
+        }
+        t0 = time.time()
+        for _ in range(100):
+            cached_builder.build_handwritten_transcription_prompt(**options)
+        t1 = time.time()
+        print(f"5. cached prompt generation (100 iterations): {t1 - t0:.4f}s")
+
     from src.prompt_engine.handlers import RubyHandler, NoiseHandler, LayoutHandler
     ruby = RubyHandler()
     noise = NoiseHandler()
@@ -59,7 +77,7 @@ def run_benchmark():
         noise.remove_noise_from_text(test_text)
         layout.detect_layout(test_text)
     t1 = time.time()
-    print(f"5. handlers combined (100 iterations): {t1 - t0:.4f}s")
+    print(f"6. handlers combined (100 iterations): {t1 - t0:.4f}s")
 
     print("=== Benchmark Completed Successfully ===")
 

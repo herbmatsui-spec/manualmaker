@@ -38,6 +38,8 @@ dependencies = [
     "python-dotenv>=1.0.0",
     "pillow>=10.0.0",
     "edge-tts>=6.1.0",
+    "gTTS>=2.5.0",
+    "pydub>=0.25.1",
     "mermaidx>=0.3.0",
     "fastapi>=0.115.0",
     "uvicorn[standard]>=0.30.0",
@@ -62,7 +64,7 @@ manual-processor-web = "src.web.app:run"
 
 [tool.setuptools.packages.find]
 where = ["."]
-include = ["manual_processor*", "src*", "config*"]
+include = ["src*", "config*"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

@@ -1,0 +1,30 @@
+{
+  "name": "manual-maker-workers",
+  "version": "2.0.0",
+  "description": "Cloudflare Workers version of Manual Maker - Handwritten manual processing system",
+  "main": "src/index.ts",
+  "scripts": {
+    "dev": "wrangler dev",
+    "deploy": "wrangler deploy",
+    "build": "wrangler build",
+    "typecheck": "tsc --noEmit"
+  },
+  "keywords": [
+    "cloudflare-workers",
+    "handwritten-manual",
+    "ocr",
+    "gemini",
+    "pdf-processing"
+  ],
+  "author": "",
+  "license": "MIT",
+  "devDependencies": {
+    "@cloudflare/workers-types": "^4.20240117.0",
+    "typescript": "^5.3.0",
+    "wrangler": "^3.0.0"
+  },
+  "dependencies": {
+    "hono": "^4.0.0",
+    "zod": "^3.22.0"
+  }
+}
