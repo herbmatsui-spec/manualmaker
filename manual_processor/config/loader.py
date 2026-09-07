@@ -137,6 +137,18 @@ def _env_to_settings_mapping() -> Dict[str, Any]:
         overrides.setdefault("prompt", {})["layout"] = os.getenv("PROMPT_LAYOUT")
     if "PROMPT_STRICT_MODE" in os.environ:
         overrides.setdefault("prompt", {})["strict_mode"] = os.getenv("PROMPT_STRICT_MODE").lower() in ("true", "1", "yes")
+    if "PROMPT_HAS_DIAGRAMS" in os.environ:
+        overrides.setdefault("prompt", {})["has_diagrams"] = os.getenv("PROMPT_HAS_DIAGRAMS").lower() in ("true", "1", "yes")
+    if "PROMPT_LOW_QUALITY_MODE" in os.environ:
+        overrides.setdefault("prompt", {})["low_quality_mode"] = os.getenv("PROMPT_LOW_QUALITY_MODE").lower() in ("true", "1", "yes")
+    if "PROMPT_DOMAIN_TERMS" in os.environ:
+        terms = [t.strip() for t in os.getenv("PROMPT_DOMAIN_TERMS", "").replace("\n", ",").split(",") if t.strip()]
+        if terms:
+            overrides.setdefault("prompt", {})["domain_terms"] = terms
+    if "PROMPT_CUSTOM_RULES" in os.environ:
+        rules = [r.strip() for r in os.getenv("PROMPT_CUSTOM_RULES", "").split("\n") if r.strip()]
+        if rules:
+            overrides.setdefault("prompt", {})["custom_rules"] = rules
 
     # TTS settings
     if "TTS_LANGUAGE" in os.environ:

@@ -75,6 +75,19 @@
                         <div class="progress-bar-fill" id="progress-fill" style="width: 0%;"></div>
                     </div>
                 </div>
+
+                <!-- Drive Connection Section -->
+                <div class="drive-section" id="drive-section" style="margin-top: 20px; padding: 15px; border: 1px solid #444; border-radius: 8px;">
+                    <h3>📁 Googleドライブ連携</h3>
+                    <div class="drive-status" id="drive-status" style="margin-bottom: 10px;">
+                        <span class="status-dot disconnected" id="drive-status-dot"></span>
+                        <span id="drive-status-text">未接続</span>
+                    </div>
+                    <button class="drive-btn" id="connect-drive-btn" style="background: #4285f4; color: white; border: none; padding: 8px 16px; border-radius: 4px; cursor: pointer; margin-right: 8px;">Googleドライブに接続</button>
+                    <button class="drive-btn" id="upload-drive-btn" disabled style="background: #34a853; color: white; border: none; padding: 8px 16px; border-radius: 4px; cursor: pointer;">ドライブにアップロード</button>
+                    <button class="drive-btn" id="revoke-drive-btn" style="display: none; background: #ea4335; color: white; border: none; padding: 8px 16px; border-radius: 4px; cursor: pointer; margin-left: 8px;">認証解除</button>
+                    <div id="drive-result" style="margin-top: 10px; font-size: 12px; color: #aaa;"></div>
+                </div>
             </section>
 
             <!-- Right Column: Results & Editor -->

@@ -157,6 +157,19 @@ class USBSettings(BaseModel):
     paths: List[str] = Field(default_factory=list)
 
 
+class GoogleDriveSettings(BaseModel):
+    """Google Drive integration settings"""
+    model_config = ConfigDict(extra="ignore")
+    
+    enabled: bool = False
+    auto_upload: bool = False
+    share_public: bool = True
+    folder_id: Optional[str] = None
+    folder_name: str = "ManualMaker"
+    credentials_path: Optional[str] = None
+    token_keyring_service: str = "manual-processor"
+
+
 class Settings(BaseModel):
     """Root settings model"""
     model_config = ConfigDict(extra="ignore")
@@ -171,3 +184,4 @@ class Settings(BaseModel):
     tts: TTSSettings = Field(default_factory=TTSSettings)
     security: SecuritySettings = Field(default_factory=SecuritySettings)
     usb: USBSettings = Field(default_factory=USBSettings)
+    drive: GoogleDriveSettings = Field(default_factory=GoogleDriveSettings)

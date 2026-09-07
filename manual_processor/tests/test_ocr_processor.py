@@ -27,10 +27,10 @@ class TestOCRProcessor:
                 assert processor.max_results == 10
 
     def test_ocr_processor_initialization_missing_credentials(self):
-        """認証情報がない場合にエラーになること"""
+        """認証情報がない場合に初期化は成功するがクライアントはNone"""
         with patch.dict('os.environ', {}, clear=True):
-            with pytest.raises(OCRError, match="Google Cloud認証情報が設定されていません"):
-                OCRProcessor(project_id="test-project")
+            processor = OCRProcessor(project_id="test-project")
+            assert processor.client is None
 
     def test_ocr_processor_is_service_available(self):
         """サービス利用可能チェックが機能すること"""

@@ -291,6 +291,97 @@ document.addEventListener('DOMContentLoaded', () => {
             }
         });
     }
+
+    // Google Drive Integration
+    const connectDriveBtn = document.getElementById('connect-drive-btn');
+    const uploadDriveBtn = document.getElementById('upload-drive-btn');
+    const revokeDriveBtn = document.getElementById('revoke-drive-btn');
+    const driveStatusText = document.getElementById('drive-status-text');
+    const driveStatusDot = document.getElementById('drive-status-dot');
+    const driveResult = document.getElementById('drive-result');
+
+    async function checkDriveStatus() {
+        try {
+            const res = await fetch('/api/drive/status');
+            const data = await res.json();
+            if (data.authenticated) {
+                driveStatusText.textContent = '接続済み';
+                driveStatusDot.className = 'status-dot connected';
+                connectDriveBtn.style.display = 'none';
+                revokeDriveBtn.style.display = 'inline-block';
+                uploadDriveBtn.disabled = !currentFileId;
+            } else {
+                driveStatusText.textContent = '未接続';
+                driveStatusDot.className = 'status-dot disconnected';
+                connectDriveBtn.style.display = 'inline-block';
+                revokeDriveBtn.style.display = 'none';
+                uploadDriveBtn.disabled = true;
+            }
+        } catch (err) {
+            console.error('Drive status check failed:', err);
+        }
+    }
+
+    if (connectDriveBtn) {
+        connectDriveBtn.addEventListener('click', async () => {
+            try {
+                const res = await fetch('/api/drive/auth');
+                const data = await res.json();
+                if (data.auth_url) {
+                    window.open(data.auth_url, '_blank', 'width=600,height=700');
+                }
+            } catch (err) {
+                alert(`認証URLの取得に失敗: ${err.message}`);
+            }
+        });
+    }
+
+    if (revokeDriveBtn) {
+        revokeDriveBtn.addEventListener('click', async () => {
+            try {
+                const res = await fetch('/api/drive/revoke', { method: 'POST' });
+                const data = await res.json();
+                driveResult.textContent = data.message;
+                checkDriveStatus();
+            } catch (err) {
+                alert(`認証解除に失敗: ${err.message}`);
+            }
+        });
+    }
+
+    if (uploadDriveBtn) {
+        uploadDriveBtn.addEventListener('click', async () => {
+            if (!currentFileId) return;
+
+            uploadDriveBtn.disabled = true;
+            driveResult.textContent = 'アップロード中...';
+
+            try {
+                const res = await fetch(`/api/drive/upload/${currentFileId}`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' }
+                });
+                const data = await res.json();
+                if (data.success) {
+                    driveResult.innerHTML = 'アップロード完了！<br>';
+                    for (const [key, val] of Object.entries(data.drive_urls || {})) {
+                        if (val.web_view_link) {
+                            driveResult.innerHTML += `<a href="${val.web_view_link}" target="_blank">${key.toUpperCase()}</a><br>`;
+                        }
+                    }
+                } else {
+                    driveResult.textContent = 'アップロード失敗';
+                }
+            } catch (err) {
+                driveResult.textContent = `エラー: ${err.message}`;
+            } finally {
+                uploadDriveBtn.disabled = false;
+            }
+        });
+    }
+
+    // Check Drive status on load
+    checkDriveStatus();
 });
 
 

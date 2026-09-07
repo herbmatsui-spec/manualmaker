@@ -102,6 +102,9 @@ class I18nManager:
         "es": ('\u00c0', '\u00ff'),      # Spanish/Portuguese accents
     }
 
+    # Expose module-level TRANSLATIONS for backward compatibility
+    TRANSLATIONS = TRANSLATIONS
+
     def __init__(self, default_lang: str = "ja"):
         self.current_lang = default_lang.lower()
         if self.current_lang not in TRANSLATIONS:

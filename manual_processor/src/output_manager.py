@@ -34,6 +34,7 @@ class OutputConfig:
     include_docx: bool = True
     include_audio: bool = True
     include_qr: bool = True
+    include_drive: bool = False
     include_diagram_markdown: bool = True
     include_diagram_mermaid: bool = True
     language_code: str = "ja-JP"
@@ -41,6 +42,8 @@ class OutputConfig:
     speaking_rate: float = 1.0
     pitch: float = 0.0
     base_url: str = "http://localhost:8000"
+    drive_folder_id: Optional[str] = None
+    drive_share_public: bool = True
 
 def _extract_audio_text(content: Any, formatted_text: str) -> str:
     """音声合成用テキストを抽出するヘルパー関数"""
@@ -141,6 +144,54 @@ def save_all_formats(content: GeminiResult, base_output_path: Path,
         "key_point_count": len(getattr(content, 'key_points', [])) if hasattr(content, 'key_points') else 0,
         "errors": errors if errors else []
     }
+    
+    # Googleドライブへのアップロード
+    drive_urls = {}
+    if config.include_drive:
+        try:
+            from src.google_drive_manager import GoogleDriveManager, GoogleDriveError
+            drive_manager = GoogleDriveManager(credentials_path=Path("credentials.json"))
+            if drive_manager.is_authenticated():
+                folder_id = config.drive_folder_id
+                if not folder_id and getattr(config, 'drive_folder_name', None):
+                    try:
+                        folder_id = drive_manager.create_folder(config.drive_folder_name)
+                    except Exception as e:
+                        logger.warning(f"Drive folder creation failed: {e}")
+
+                upload_map = {
+                    "pdf": ("application/pdf", pdf_path if config.include_pdf else None),
+                    "docx": ("application/vnd.openxmlformats-officedocument.wordprocessingml.document", docx_path if config.include_docx else None),
+                    "audio": ("audio/mpeg", audio_path if config.include_audio else None),
+                    "qr": ("image/png", qr_path),
+                }
+
+                for key, (mime_type, path) in upload_map.items():
+                    if not path or not Path(path).exists():
+                        continue
+                    try:
+                        drive_file = drive_manager.upload_and_share(
+                            file_path=Path(path),
+                            folder_id=folder_id,
+                            mime_type=mime_type,
+                            share_public=config.drive_share_public
+                        )
+                        drive_urls[key] = {
+                            "file_id": drive_file.file_id,
+                            "web_view_link": drive_file.web_view_link,
+                            "web_content_link": drive_file.web_content_link,
+                        }
+                    except Exception as e:
+                        logger.warning(f"Drive upload failed for {key}: {e}")
+                        drive_urls[key] = {"error": str(e)}
+            else:
+                logger.info("Drive upload skipped: not authenticated")
+        except ImportError as e:
+            logger.warning(f"Drive upload skipped: Google API libraries not installed ({e})")
+        except Exception as e:
+            logger.warning(f"Drive upload failed: {e}")
+    
+    metadata["drive_urls"] = drive_urls
     
     return OutputFiles(
         pdf_path=pdf_path,

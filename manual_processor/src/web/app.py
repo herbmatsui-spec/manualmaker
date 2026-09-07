@@ -14,6 +14,7 @@ from config.config import Config
 from src.i18n_manager import I18nManager
 from src.security_manager import SecurityManager, AuditLogger
 from src.utils.validators import validate_pdf_content, validate_extension
+from src.google_drive_manager import GoogleDriveManager, GoogleDriveError, DriveFile
 
 logger = logging.getLogger(__name__)
 
@@ -486,6 +487,138 @@ async def save_mermaid_and_rebuild(file_id: str, req: MermaidRenderRequest) -> D
         raise HTTPException(status_code=500, detail=f"再生成エラー: {str(e)}")
 
 
+from fastapi.responses import RedirectResponse
+
+
+def _get_drive_manager() -> GoogleDriveManager:
+    """Create GoogleDriveManager from config"""
+    credentials_path = getattr(config.drive, 'credentials_path', None)
+    if credentials_path:
+        creds_path = Path(credentials_path)
+    else:
+        creds_path = Path(__file__).parent.parent.parent / "credentials.json"
+    return GoogleDriveManager(credentials_path=creds_path)
+
+
+@app.get("/api/drive/status")
+async def drive_status() -> Dict[str, Any]:
+    """Googleドライブ認証状態を取得"""
+    try:
+        manager = _get_drive_manager()
+        return {
+            "authenticated": manager.is_authenticated(),
+            "enabled": getattr(config.drive, 'enabled', False),
+        }
+    except Exception as e:
+        logger.error(f"Drive status check failed: {e}")
+        return {"authenticated": False, "enabled": False, "error": str(e)}
+
+
+@app.get("/api/drive/auth")
+async def drive_auth_redirect() -> Dict[str, str]:
+    """Google OAuth2認証URLを取得"""
+    try:
+        manager = _get_drive_manager()
+        redirect_uri = f"http://localhost:{config.web.port}/api/drive/callback"
+        auth_url = manager.get_authorization_url(redirect_uri=redirect_uri)
+        return {"auth_url": auth_url}
+    except GoogleDriveError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except Exception as e:
+        logger.error(f"Drive auth URL generation failed: {e}")
+        raise HTTPException(status_code=500, detail="認証URLの生成に失敗しました")
+
+
+@app.get("/api/drive/callback")
+async def drive_auth_callback(request: Request, code: Optional[str] = None) -> Dict[str, str]:
+    """OAuth2コールバック（認証コードをトークンに交換）"""
+    if not code:
+        raise HTTPException(status_code=400, detail="認証コードがありません")
+    try:
+        manager = _get_drive_manager()
+        redirect_uri = f"http://localhost:{config.web.port}/api/drive/callback"
+        token_info = manager.exchange_code(code, redirect_uri=redirect_uri)
+        return {"status": "ok", "message": "認証成功", "token_info": token_info}
+    except GoogleDriveError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except Exception as e:
+        logger.error(f"Drive auth callback failed: {e}")
+        raise HTTPException(status_code=500, detail="認証処理に失敗しました")
+
+
+@app.post("/api/drive/upload/{file_id}")
+async def upload_to_drive(file_id: str) -> Dict[str, Any]:
+    """処理結果をGoogleドライブにアップロード"""
+    if file_id not in PROCESSING_RESULTS:
+        raise HTTPException(status_code=404, detail="処理結果が見つかりません。")
+
+    try:
+        manager = _get_drive_manager()
+        if not manager.is_authenticated():
+            raise HTTPException(status_code=401, detail="Googleドライブに認証されていません。")
+
+        res = PROCESSING_RESULTS[file_id]
+        outputs = res.get("output_files", {})
+        drive_urls = {}
+        folder_id = getattr(config.drive, 'folder_id', None)
+        share_public = getattr(config.drive, 'share_public', True)
+
+        if not folder_id and getattr(config.drive, 'folder_name', None):
+            try:
+                folder_id = manager.create_folder(config.drive.folder_name)
+            except Exception as e:
+                logger.warning(f"Failed to create Drive folder: {e}")
+
+        upload_map = {
+            "pdf": ("application/pdf", outputs.get("pdf")),
+            "docx": ("application/vnd.openxmlformats-officedocument.wordprocessingml.document", outputs.get("docx")),
+            "audio": ("audio/mpeg", outputs.get("audio")),
+            "diagram": ("image/png", outputs.get("diagram")),
+            "qr": ("image/png", outputs.get("qr")),
+        }
+
+        for key, (mime_type, path_str) in upload_map.items():
+            if not path_str:
+                continue
+            path = Path(path_str)
+            if not path.exists():
+                continue
+            try:
+                drive_file = manager.upload_and_share(
+                    file_path=path,
+                    folder_id=folder_id,
+                    mime_type=mime_type,
+                    share_public=share_public
+                )
+                drive_urls[key] = {
+                    "file_id": drive_file.file_id,
+                    "web_view_link": drive_file.web_view_link,
+                    "web_content_link": drive_file.web_content_link,
+                }
+            except Exception as e:
+                logger.warning(f"Drive upload failed for {key}: {e}")
+                drive_urls[key] = {"error": str(e)}
+
+        res["drive_urls"] = drive_urls
+        return {"success": True, "drive_urls": drive_urls}
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Drive upload error: {e}")
+        raise HTTPException(status_code=500, detail=f"アップロード失敗: {str(e)}")
+
+
+@app.post("/api/drive/revoke")
+async def drive_revoke() -> Dict[str, str]:
+    """Googleドライブ認証を解除"""
+    try:
+        manager = _get_drive_manager()
+        manager.revoke_authentication()
+        return {"status": "ok", "message": "認証を解除しました"}
+    except Exception as e:
+        logger.error(f"Drive revoke failed: {e}")
+        raise HTTPException(status_code=500, detail=f"解除失敗: {str(e)}")
 
 
 

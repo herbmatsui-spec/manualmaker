@@ -69,8 +69,7 @@ class OCRProcessor:
         
         effective_api_key = api_key or os.getenv("GOOGLE_API_KEY") or os.getenv("GEMINI_API_KEY")
         
-        if "GOOGLE_APPLICATION_CREDENTIALS" not in os.environ and not effective_api_key:
-            raise OCRError("Google Cloud認証情報が設定されていません")
+        self.client = None
         
         try:
             if "GOOGLE_APPLICATION_CREDENTIALS" in os.environ:
@@ -84,10 +83,8 @@ class OCRProcessor:
             
             logger.info("Google Cloud Vision クライアントを初期化しました")
         except Exception as e:
-            if isinstance(e, OCRError):
-                raise e
-            logger.error(f"Vision クライアント初期化エラー: {e}")
-            raise OCRError(f"Vision クライアントの初期化に失敗しました: {e}")
+            logger.warning(f"Vision クライアント初期化エラー: {e}")
+            self.client = None
 
     def extract_text(self, image: Image.Image) -> str:
         """
@@ -122,8 +119,9 @@ class OCRProcessor:
     
     def is_service_available(self) -> bool:
         """Vision APIサービスが利用可能かチェック"""
+        if self.client is None:
+            return False
         try:
-            # 簡単なテストリクエストを送信
             test_image = vision.Image(content=b"test")
             self.client.document_text_detection(image=test_image, timeout=5)
             return True
@@ -206,6 +204,9 @@ class OCRProcessor:
             OCRError: API呼び出しに失敗した場合
             ValueError: 画像フォーマットがサポートされていない場合
         """
+        if self.client is None:
+            raise OCRError("Vision API クライアントが初期化されていません")
+        
         if language_hints is None:
             language_hints = ['ja', 'en']
         

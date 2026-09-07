@@ -13,6 +13,16 @@ from src.security.keyring_store import get_api_key, set_api_key, delete_api_key,
 
 logger = logging.getLogger(__name__)
 
+try:
+    from google.oauth2.credentials import Credentials
+    from google.auth.transport.requests import Request
+    from google_auth_oauthlib.flow import InstalledAppFlow
+    from googleapiclient.discovery import build
+    from googleapiclient.http import MediaFileUpload
+    GOOGLE_API_AVAILABLE = True
+except ImportError:
+    GOOGLE_API_AVAILABLE = False
+
 SCOPES = [
     "https://www.googleapis.com/auth/drive.file",
 ]
@@ -20,6 +30,16 @@ SCOPES = [
 KEYRING_SERVICE = "manual_processor"
 KEYRING_REFRESH_TOKEN_USERNAME = "google_drive_refresh_token"
 KEYRING_CREDENTIALS_USERNAME = "google_drive_credentials"
+
+try:
+    from google_auth_oauthlib.flow import Flow
+    from google.oauth2.credentials import Credentials
+    from google.auth.transport.requests import Request
+    from googleapiclient.discovery import build
+    from googleapiclient.http import MediaFileUpload
+    GOOGLE_API_AVAILABLE = True
+except ImportError:
+    GOOGLE_API_AVAILABLE = False
 
 
 class GoogleDriveError(Exception):
@@ -64,12 +84,6 @@ class GoogleDriveManager:
         Returns:
             Authorization URL string
         """
-        try:
-            from google.auth.transport.requests import Request
-            from google.oauth2.credentials import Credentials
-        except ImportError as e:
-            raise GoogleDriveError("Google auth libraries not installed. Install: pip install google-api-python-client google-auth-httplib2 google-auth-oauthlib") from e
-
         if not self.credentials_path.exists():
             raise GoogleDriveError(f"Credentials file not found: {self.credentials_path}")
 
@@ -103,15 +117,12 @@ class GoogleDriveManager:
         Returns:
             Token info dict with access_token, refresh_token, expires_in, etc.
         """
-        try:
-            from google_auth_oauthlib.flow import Flow
-        except ImportError as e:
-            raise GoogleDriveError("Google auth libraries not installed") from e
-
         if not self.credentials_path.exists():
             raise GoogleDriveError(f"Credentials file not found: {self.credentials_path}")
 
         try:
+            from google_auth_oauthlib.flow import Flow
+
             flow = Flow.from_client_secrets_file(
                 str(self.credentials_path),
                 scopes=SCOPES,
@@ -134,16 +145,8 @@ class GoogleDriveManager:
                 "scopes": list(creds.scopes or SCOPES),
             }
 
-            set_api_key(
-                KEYRING_SERVICE,
-                KEYRING_REFRESH_TOKEN_USERNAME,
-                creds.refresh_token,
-            )
-            set_api_key(
-                KEYRING_SERVICE,
-                KEYRING_CREDENTIALS_USERNAME,
-                json.dumps(token_info),
-            )
+            set_api_key(KEYRING_SERVICE, KEYRING_REFRESH_TOKEN_USERNAME, creds.refresh_token)
+            set_api_key(KEYRING_SERVICE, KEYRING_CREDENTIALS_USERNAME, json.dumps(token_info))
 
             self._creds = creds
             return token_info
@@ -155,12 +158,6 @@ class GoogleDriveManager:
 
     def _load_credentials(self):
         """Load and refresh credentials from keyring"""
-        try:
-            from google.oauth2.credentials import Credentials
-            from google.auth.transport.requests import Request
-        except ImportError as e:
-            raise GoogleDriveError("Google auth libraries not installed") from e
-
         refresh_token = get_api_key(KEYRING_SERVICE, KEYRING_REFRESH_TOKEN_USERNAME)
         if not refresh_token:
             raise GoogleDriveError("Not authenticated. No refresh token found.")
@@ -169,6 +166,7 @@ class GoogleDriveManager:
         if creds_json:
             try:
                 token_info = json.loads(creds_json)
+                from google.oauth2.credentials import Credentials
                 creds = Credentials(
                     token=token_info.get("token"),
                     refresh_token=token_info.get("refresh_token"),
@@ -180,6 +178,7 @@ class GoogleDriveManager:
             except Exception as e:
                 raise GoogleDriveError(f"Failed to parse stored credentials: {e}") from e
         else:
+            from google.oauth2.credentials import Credentials
             creds = Credentials(
                 token=None,
                 refresh_token=refresh_token,
@@ -191,6 +190,7 @@ class GoogleDriveManager:
 
         if creds.expired and creds.refresh_token:
             try:
+                from google.auth.transport.requests import Request
                 creds.refresh(Request())
                 token_info = {
                     "token": creds.token,
@@ -200,11 +200,7 @@ class GoogleDriveManager:
                     "client_secret": creds.client_secret,
                     "scopes": list(creds.scopes or SCOPES),
                 }
-                set_api_key(
-                    KEYRING_SERVICE,
-                    KEYRING_CREDENTIALS_USERNAME,
-                    json.dumps(token_info),
-                )
+                set_api_key(KEYRING_SERVICE, KEYRING_CREDENTIALS_USERNAME, json.dumps(token_info))
             except Exception as e:
                 raise GoogleDriveError(f"Failed to refresh access token: {e}") from e
 
@@ -213,12 +209,8 @@ class GoogleDriveManager:
 
     def _get_drive_service(self):
         """Get authenticated Google Drive service"""
-        try:
-            from googleapiclient.discovery import build
-        except ImportError as e:
-            raise GoogleDriveError("Google API client not installed. Install: pip install google-api-python-client") from e
-
         creds = self._load_credentials()
+        from googleapiclient.discovery import build
         return build("drive", "v3", credentials=creds)
 
     def upload_file(self, file_path: Path, folder_id: Optional[str] = None,

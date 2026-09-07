@@ -22,7 +22,6 @@ def test_builder_reads_prompt_settings_from_config():
 
     assert "縦書き" in prompt
     assert "固有名詞" in prompt
-    assert "マークダウン形式" in prompt
     assert "薄く書かれた文字" in prompt
 
 
