@@ -16,6 +16,7 @@ from src.docx_generator import create_word_document
 from src.audio_generator import create_audio_summary
 from src.diagram_generator import DiagramGenerator
 from src.prompt_engine.prompt_builder import HandwrittenPromptBuilder
+from src.security_manager import SecurityManager
 
 logger = logging.getLogger(__name__)
 
@@ -52,7 +53,8 @@ class DocumentProcessor:
 
     
     def process_pdf(self, pdf_path: Path, compact_layout: bool = False, use_emojis: bool = False,
-                    progress_tracker = None, cancel_token = None) -> Dict:
+                    progress_tracker = None, cancel_token = None,
+                    file_id: Optional[str] = None, base_url: str = "http://localhost:8000") -> Dict:
         """
         Process a PDF file through the complete pipeline with progress tracking and cancellation support
         """
@@ -100,6 +102,13 @@ class DocumentProcessor:
             if cancel_token is not None and hasattr(cancel_token, 'throw_if_cancelled'):
                 cancel_token.throw_if_cancelled()
 
+            # Step 1.5: Apply PII masking if enabled
+            if getattr(self.config, 'pii_masking_enabled', False):
+                masked_text, mask_info = SecurityManager.mask_sensitive_data(extracted_text, record_positions=True)
+                if mask_info.get("counts"):
+                    logger.info(f"PII masking applied: {mask_info['counts']}")
+                extracted_text = masked_text
+            
             # Step 2: Summarize and structure the text
             summary_result = self._run_summarization(extracted_text, pdf_path, progress_tracker=progress_tracker, cancel_token=cancel_token)
             
@@ -107,7 +116,8 @@ class DocumentProcessor:
                 cancel_token.throw_if_cancelled()
 
             # Step 3: Generate output files
-            output_files = self._run_output_generation(summary_result, pdf_path, compact_layout=compact_layout, use_emojis=use_emojis, progress_tracker=progress_tracker)
+            output_files = self._run_output_generation(summary_result, pdf_path, compact_layout=compact_layout, use_emojis=use_emojis, progress_tracker=progress_tracker,
+                                                       file_id=file_id, base_url=base_url)
             
             if progress_tracker:
                 progress_tracker.update("completed", 100.0, f"処理完了: {pdf_path.name}")
@@ -156,11 +166,13 @@ class DocumentProcessor:
         logger.info(f"Summarization completed: {len(summary_result.key_points)} key points found")
         return summary_result
 
-    def _run_output_generation(self, summary_result: GeminiResult, pdf_path: Path, compact_layout: bool = False, use_emojis: bool = False, progress_tracker = None) -> Dict[str, str]:
+    def _run_output_generation(self, summary_result: GeminiResult, pdf_path: Path, compact_layout: bool = False, use_emojis: bool = False, progress_tracker = None,
+                               file_id: Optional[str] = None, base_url: str = "http://localhost:8000") -> Dict[str, str]:
         """出力ファイル（PDF/Word/音声/図表）の生成を実行"""
         if progress_tracker:
             progress_tracker.update("output", 75.0, f"ファイル出力中 (PDF/Word/音声/図表): {pdf_path.name}")
-        return self._generate_outputs(summary_result, pdf_path, compact_layout=compact_layout, use_emojis=use_emojis)
+        return self._generate_outputs(summary_result, pdf_path, compact_layout=compact_layout, use_emojis=use_emojis,
+                                      file_id=file_id, base_url=base_url)
 
     def process_batch(self, pdf_paths: list, progress_tracker = None, cancel_token = None) -> list:
         """
@@ -269,7 +281,8 @@ class DocumentProcessor:
 
         return "\n\n".join(text_parts)
     
-    def _generate_outputs(self, summary_result: GeminiResult, pdf_path: Path, compact_layout: bool = False, use_emojis: bool = False) -> Dict[str, str]:
+    def _generate_outputs(self, summary_result: GeminiResult, pdf_path: Path, compact_layout: bool = False, use_emojis: bool = False,
+                          file_id: Optional[str] = None, base_url: str = "http://localhost:8000") -> Dict[str, str]:
         """Generate PDF, Word, audio, and flowchart diagram output files"""
         import re
         output_dir = self.config.output_directory
@@ -309,9 +322,13 @@ class DocumentProcessor:
 
         # 1. Generate flowchart diagram FIRST
         diagram_path_obj = None
+        diagram_markdown_path = None
+        diagram_mermaid_path = None
         if self.config.generate_diagram:
             try:
-                diagram_output = output_dir / f"{base_name}_フロー図.png"
+                diagram_output = output_dir / f"{base_name}_フロー図.png" if self.config.generate_diagram_png else None
+                diagram_md_output = output_dir / f"{base_name}_フロー図.md"
+                diagram_mmd_output = output_dir / f"{base_name}_フロー図.mmd" if self.config.generate_diagram_mermaid else None
                 diagram_result = self.diagram_generator.generate(
                     text=full_content_text,
                     sections=sections_dicts,
@@ -319,13 +336,22 @@ class DocumentProcessor:
                     output_path=diagram_output,
                     theme=self.config.diagram_theme,
                     width=self.config.diagram_width,
-                    height=self.config.diagram_height
+                    height=self.config.diagram_height,
+                    markdown_path=diagram_md_output,
+                    mermaid_path=diagram_mmd_output
                 )
-                if diagram_result.success and diagram_result.image_path:
-                    diagram_path_obj = diagram_result.image_path
-                    outputs["diagram"] = str(diagram_result.image_path)
+                if diagram_result.success:
+                    if diagram_result.image_path:
+                        diagram_path_obj = diagram_result.image_path
+                        outputs["diagram"] = str(diagram_result.image_path)
                     outputs["mermaid_code"] = diagram_result.mermaid_code
-                    logger.info(f"Diagram generated: {diagram_result.image_path}")
+                    if diagram_result.markdown_path:
+                        diagram_markdown_path = diagram_result.markdown_path
+                        outputs["diagram_markdown"] = str(diagram_result.markdown_path)
+                    if diagram_result.mermaid_path:
+                        diagram_mermaid_path = diagram_result.mermaid_path
+                        outputs["diagram_mermaid"] = str(diagram_result.mermaid_path)
+                    logger.info(f"Diagram generated: {diagram_result.diagram_type}")
                 else:
                     logger.warning(f"Diagram generation failed: {diagram_result.error_message}")
                     outputs["diagram"] = None
@@ -370,5 +396,45 @@ class DocumentProcessor:
         except Exception as e:
             logger.warning(f"Audio generation failed: {e}")
             outputs["audio"] = None
+        
+        # 5. Generate QR code for audio playback (if file_id is available)
+        qr_path = None
+        if file_id and outputs.get("audio") and Path(outputs["audio"]).exists():
+            try:
+                from src.qr_generator import QRGenerator
+                qr_gen = QRGenerator()
+                playback_url = f"{base_url.rstrip('/')}/api/download/{file_id}/audio"
+                qr_output = output_dir / f"{base_name}_qr.png"
+                qr_path = qr_gen.generate_qr(playback_url, qr_output, title=doc_title)
+                outputs["qr"] = str(qr_path)
+                logger.info(f"QR code generated: {qr_path}")
+            except Exception as e:
+                logger.warning(f"QR code generation failed (continuing): {e}")
+        
+        # 2. Generate PDF (with diagram image and QR if present)
+        try:
+            pdf_output = output_dir / f"{base_name}.pdf"
+            create_formatted_pdf(full_content_text, pdf_output, title=doc_title,
+                                 compact_layout=compact_layout, use_emojis=use_emojis,
+                                 diagram_path=diagram_path_obj,
+                                 qr_image_path=qr_path)
+            outputs["pdf"] = str(pdf_output)
+            logger.info(f"PDF generated: {pdf_output}")
+        except Exception as e:
+            logger.warning(f"PDF generation failed: {e}")
+            outputs["pdf"] = None
+        
+        # 3. Generate Word document (with diagram image and QR if present)
+        try:
+            docx_output = output_dir / f"{base_name}.docx"
+            create_word_document(full_content_text, docx_output, title=doc_title,
+                                 compact_layout=compact_layout, use_emojis=use_emojis,
+                                 diagram_path=diagram_path_obj,
+                                 qr_image_path=qr_path)
+            outputs["docx"] = str(docx_output)
+            logger.info(f"Word document generated: {docx_output}")
+        except Exception as e:
+            logger.warning(f"Word generation failed: {e}")
+            outputs["docx"] = None
         
         return outputs

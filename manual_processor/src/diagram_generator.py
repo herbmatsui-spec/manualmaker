@@ -26,6 +26,8 @@ class DiagramResult:
     diagram_type: str          # "flowchart", "sequence", "mindmap" 等
     success: bool              # 生成成功フラグ
     error_message: str = ""    # エラー時のメッセージ
+    markdown_path: Optional[Path] = None  # Markdown ファイルパス (.md)
+    mermaid_path: Optional[Path] = None   # Mermaid ファイルパス (.mmd)
 
 
 class DiagramGenerator:
@@ -286,8 +288,10 @@ flowchart TD
         return result.strip()
 
     def generate(self, text: str, sections: list, key_points: list,
-                 output_path: Path, theme: str = "default",
-                 width: int = 800, height: int = 600) -> DiagramResult:
+                 output_path: Optional[Path] = None, theme: str = "default",
+                 width: int = 800, height: int = 600,
+                 markdown_path: Optional[Path] = None,
+                 mermaid_path: Optional[Path] = None) -> DiagramResult:
         """テキストとセクション情報からフローチャート画像を生成"""
 
         # Phase 1: Gemini でMermaidコードを生成
@@ -306,43 +310,65 @@ flowchart TD
             is_valid, error_msg = self.validate_mermaid_code(mermaid_code)
 
         # Phase 3: レンダリング
-        if is_valid:
+        image_path = None
+        if is_valid and output_path is not None:
             try:
                 image_path = self.render_to_image(
                     mermaid_code, output_path, theme=theme,
                     width=width, height=height
                 )
-                return DiagramResult(
-                    mermaid_code=mermaid_code,
-                    image_path=image_path,
-                    diagram_type="flowchart",
-                    success=True
-                )
             except Exception as e:
                 logger.warning(f"Mermaid レンダリング失敗: {e}, フォールバック画像を生成")
+
+        if image_path is not None:
+            result = DiagramResult(
+                mermaid_code=mermaid_code,
+                image_path=image_path,
+                diagram_type="flowchart",
+                success=True
+            )
+            if markdown_path:
+                result.markdown_path = self.save_as_markdown(mermaid_code, markdown_path)
+            if mermaid_path:
+                result.mermaid_path = self.save_as_mermaid(mermaid_code, mermaid_path)
+            return result
 
         # Phase 4: フォールバック画像
         step_texts = [sec.get('title', f'ステップ {i+1}') for i, sec in enumerate(sections)]
         if not step_texts:
             step_texts = key_points[:10] if key_points else ["手順情報なし"]
 
-        try:
-            image_path = self._create_fallback_image(step_texts, output_path, width, height)
-            return DiagramResult(
-                mermaid_code=mermaid_code,
-                image_path=image_path,
-                diagram_type="flowchart_fallback",
-                success=True,
-                error_message="フォールバック画像を使用"
-            )
-        except Exception as e:
-            return DiagramResult(
-                mermaid_code=mermaid_code,
-                image_path=None,
-                diagram_type="flowchart",
-                success=False,
-                error_message=f"画像生成完全失敗: {e}"
-            )
+        if output_path is not None:
+            try:
+                image_path = self._create_fallback_image(step_texts, output_path, width, height)
+                result = DiagramResult(
+                    mermaid_code=mermaid_code,
+                    image_path=image_path,
+                    diagram_type="flowchart_fallback",
+                    success=True,
+                    error_message="フォールバック画像を使用"
+                )
+                if markdown_path:
+                    result.markdown_path = self.save_as_markdown(mermaid_code, markdown_path)
+                if mermaid_path:
+                    result.mermaid_path = self.save_as_mermaid(mermaid_code, mermaid_path)
+                return result
+            except Exception as e:
+                logger.warning(f"フォールバック画像生成失敗: {e}")
+
+        # 画像生成なしでも Markdown / Mermaid は返す
+        result = DiagramResult(
+            mermaid_code=mermaid_code,
+            image_path=None,
+            diagram_type="flowchart",
+            success=True,
+            error_message="画像生成なし"
+        )
+        if markdown_path:
+            result.markdown_path = self.save_as_markdown(mermaid_code, markdown_path)
+        if mermaid_path:
+            result.mermaid_path = self.save_as_mermaid(mermaid_code, mermaid_path)
+        return result
 
     def _build_simple_flowchart(self, sections: list, key_points: list) -> str:
         """セクション名からシンプルなフローチャートを構築（API不要）"""
@@ -363,3 +389,38 @@ flowchart TD
             lines.append(f"    {nodes[i]} --> {nodes[i+1]}")
 
         return "\n".join(lines)
+
+    def save_as_markdown(self, mermaid_code: str, output_path: Path,
+                         title: str = "フローチャート") -> Path:
+        """
+        Mermaid コードを Markdown 形式で保存
+
+        Args:
+            mermaid_code: Mermaid 記法の文字列
+            output_path: 出力ファイルパス (.md)
+            title: ドキュメントタイトル
+
+        Returns:
+            生成されたファイルのパス
+        """
+        output_path.parent.mkdir(parents=True, exist_ok=True)
+        content = f"# {title}\n\n```mermaid\n{mermaid_code}\n```\n"
+        output_path.write_text(content, encoding="utf-8")
+        logger.info(f"Markdown diagram saved: {output_path}")
+        return output_path
+
+    def save_as_mermaid(self, mermaid_code: str, output_path: Path) -> Path:
+        """
+        Mermaid コードを生の .mmd 形式で保存
+
+        Args:
+            mermaid_code: Mermaid 記法の文字列
+            output_path: 出力ファイルパス (.mmd)
+
+        Returns:
+            生成されたファイルのパス
+        """
+        output_path.parent.mkdir(parents=True, exist_ok=True)
+        output_path.write_text(mermaid_code, encoding="utf-8")
+        logger.info(f"Mermaid file saved: {output_path}")
+        return output_path

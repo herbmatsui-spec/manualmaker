@@ -1,0 +1,66 @@
+app:
+  name: manual-processor
+  version: 2.1.0
+  debug: false
+
+paths:
+  output_directory: ./output
+  upload_directory: ./uploads
+  temp_directory: ./temp
+  log_directory: ./logs
+
+ocr:
+  provider: google_vision  # google_vision | gemini
+  batch_size: 4
+  max_retries: 3
+  timeout_seconds: 30
+  max_results: 10
+
+gemini:
+  model: gemini-1.5-flash
+  temperature: 0.3
+  max_output_tokens: 2048
+
+processing:
+  chunk_size: 4000
+  chunk_overlap: 500
+  processor_type: gemini  # gemini | local | hybrid
+  fallback_enabled: true
+
+web:
+  host: 0.0.0.0
+  port: 8000
+  cors_origins:
+    - http://localhost:3000
+    - http://localhost:8000
+  upload_max_mb: 100
+
+prompt:
+  layout: horizontal  # horizontal | vertical
+  domain_terms: []
+  has_diagrams: false
+  low_quality_mode: false
+  strict_mode: true
+  custom_rules: []
+  generate_diagram: true
+
+tts:
+  language_code: ja-JP
+  voice_name: ja-JP-Standard-A
+  speaking_rate: 1.0
+  pitch: 0.0
+
+security:
+  pii_masking:
+    enabled: true
+    patterns_file: config/pii_patterns.yaml
+  audit:
+    enabled: true
+    retention_days: 90
+  encryption:
+    key_env: ENCRYPTION_KEY
+
+usb:
+  auto_detect: true
+  poll_interval: 5
+  paths: []

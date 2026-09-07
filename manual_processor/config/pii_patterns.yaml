@@ -1,0 +1,49 @@
+patterns:
+  - name: EMAIL
+    regex: '[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}'
+    mask: "[REDACTED_EMAIL]"
+    enabled: true
+
+  - name: CREDIT_CARD
+    regex: '\b(?:4\d{3}|5[1-5]\d{2}|3[47]\d{2}|6(?:011|5\d{2}))[ -]?\d{4}[ -]?\d{4}[ -]?\d{1,4}\b'
+    mask: "[REDACTED_CARD]"
+    enabled: true
+
+  - name: PHONE_JP
+    regex: '0\d{1,4}-\d{1,4}-\d{4}'
+    mask: "[REDACTED_PHONE]"
+    enabled: true
+
+  - name: MY_NUMBER
+    regex: '\b\d{4}-\d{4}-\d{4}\b'
+    mask: "[REDACTED_MYNUMBER]"
+    enabled: true
+
+  - name: PASSPORT
+    regex: '\b[A-Z]{1,2}\d{7}\b'
+    mask: "[REDACTED_PASSPORT]"
+    enabled: true
+
+  - name: POSTAL_JP
+    regex: '〒\s*\d{3}-\d{4}'
+    mask: "[REDACTED_POSTAL]"
+    enabled: true
+
+  - name: POSTAL_NOCOPY
+    regex: '(?<![a-zA-Z0-9])\d{3}-\d{4}(?![0-9])'
+    mask: "[REDACTED_POSTAL]"
+    enabled: true
+
+  - name: IP_ADDRESS
+    regex: '\b(?:\d{1,3}\.){3}\d{1,3}\b'
+    mask: "[REDACTED_IP]"
+    enabled: true
+
+  - name: BANK_ACCOUNT
+    regex: '\b\d{6}-\d{8}\b'
+    mask: "[REDACTED_BANK]"
+    enabled: true
+
+defaults:
+  case_sensitive: false
+  record_positions: false

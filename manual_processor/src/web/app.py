@@ -13,6 +13,7 @@ from fastapi.templating import Jinja2Templates
 from config.config import Config
 from src.i18n_manager import I18nManager
 from src.security_manager import SecurityManager, AuditLogger
+from src.utils.validators import validate_pdf_content, validate_extension
 
 logger = logging.getLogger(__name__)
 
@@ -40,8 +41,10 @@ app.add_middleware(
     CORSMiddleware,
     allow_origins=config.web_cors_origins,
     allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
+    allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+    allow_headers=["Content-Type", "Authorization", "X-Requested-With"],
+    expose_headers=["Content-Disposition"],
+    max_age=600,
 )
 
 
@@ -114,7 +117,7 @@ async def get_security_status() -> Dict[str, Any]:
     """セキュリティ設定・状態を取得"""
     import os as _os
     return {
-        "pii_masking_enabled": True,
+        "pii_masking_enabled": getattr(config, "pii_masking_enabled", False),
         "encryption_available": True,
         "encryption_key_set": bool(_os.getenv("ENCRYPTION_KEY")),
         "keyring_available": True,
@@ -156,11 +159,23 @@ UPLOADED_FILES: Dict[str, Dict[str, Any]] = {}
 @app.post("/api/upload")
 async def upload_file(file: UploadFile = File(...)) -> Dict[str, Any]:
     """PDF ファイルをアップロードして一元管理ディレクトリに保存"""
-    if not file.filename.lower().endswith(".pdf"):
+    # 拡張子チェック
+    if not validate_extension(file.filename, [".pdf"]):
         raise HTTPException(status_code=400, detail="PDF ファイルのみアップロード可能です。")
+    
+    # Content-Type チェック
+    content_type = file.content_type or ""
+    if content_type != "application/pdf":
+        raise HTTPException(status_code=400, detail="Content-Type が application/pdf ではありません。")
     
     file_bytes = await file.read()
     size_mb = len(file_bytes) / (1024 * 1024)
+    
+    # マジックバイトチェック
+    if not validate_pdf_content(file_bytes):
+        raise HTTPException(status_code=400, detail="ファイル内容がPDF形式ではありません。")
+    
+    # サイズチェック
     if size_mb > config.web_upload_max_mb:
         raise HTTPException(
             status_code=400,
@@ -231,10 +246,13 @@ async def process_pdf_api(file_id: str, options: ProcessOptions = ProcessOptions
         config.prompt_low_quality_mode = options.prompt_low_quality_mode
 
     processor = DocumentProcessor(config)
+    base_url = getattr(config, 'base_url', 'http://localhost:8000')
     result = processor.process_pdf(
         pdf_path,
         compact_layout=options.compact_layout,
-        use_emojis=options.use_emojis
+        use_emojis=options.use_emojis,
+        file_id=file_id,
+        base_url=base_url
     )
 
     PROCESSING_RESULTS[file_id] = result
@@ -276,23 +294,48 @@ from fastapi.responses import FileResponse
 
 @app.get("/api/download/{file_id}/{file_type}")
 async def download_file_api(file_id: str, file_type: str):
-    """生成ファイルのダウンロード API (file_type: pdf, docx, audio, diagram)"""
+    """生成ファイルのダウンロード API (file_type: pdf, docx, audio, diagram, diagram_markdown, diagram_mermaid, all)"""
     if file_id not in PROCESSING_RESULTS:
         raise HTTPException(status_code=404, detail="処理結果が見つかりません。")
     
     res = PROCESSING_RESULTS[file_id]
     outputs = res.get("output_files", {})
-    target_path_str = outputs.get(file_type)
 
-    if not target_path_str or not Path(target_path_str).exists():
-        raise HTTPException(status_code=404, detail=f"指定されたファイル ({file_type}) が存在しません。")
+    if file_type == "all":
+        import zipfile
+        from io import BytesIO
+        from fastapi.responses import StreamingResponse
+
+        zip_buffer = BytesIO()
+        with zipfile.ZipFile(zip_buffer, 'w', zipfile.ZIP_DEFLATED) as zipf:
+            for key, path_str in outputs.items():
+                if not path_str:
+                    continue
+                path = Path(path_str)
+                if path.exists():
+                    zipf.write(path, arcname=path.name)
+        zip_buffer.seek(0)
+        return StreamingResponse(
+            zip_buffer,
+            media_type="application/zip",
+            headers={"Content-Disposition": f"attachment; filename={file_id}_outputs.zip"}
+        )
+
+    target_path_str = outputs.get(file_type)
+    if not target_path_str:
+        if file_type == "diagram":
+            target_path_str = outputs.get("diagram_markdown")
+        if not target_path_str:
+            raise HTTPException(status_code=404, detail=f"指定されたファイル ({file_type}) が存在しません。")
 
     file_path = Path(target_path_str)
     media_types = {
         "pdf": "application/pdf",
         "docx": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
         "audio": "audio/mpeg",
-        "diagram": "image/png"
+        "diagram": "text/markdown",
+        "diagram_markdown": "text/markdown",
+        "diagram_mermaid": "text/plain"
     }
 
     return FileResponse(
@@ -396,20 +439,31 @@ async def save_mermaid_and_rebuild(file_id: str, req: MermaidRenderRequest) -> D
     if not diagram_path_str:
         diagram_path_str = str(config.output_directory / f"diagram_{file_id}.png")
 
-    diagram_path = Path(diagram_path_str)
+    diagram_path = Path(diagram_path_str) if diagram_path_str else None
     diagram_gen = DiagramGenerator(api_key=config.gemini_api_key)
 
     try:
-        # 新しい Mermaid コードから PNG 画像を生成
-        rendered_path = diagram_gen.render_to_image(
-            mermaid_code=req.mermaid_code,
-            output_path=diagram_path,
-            theme=req.theme,
-            width=req.width,
-            height=req.height
-        )
-        outputs["diagram"] = str(rendered_path)
+        # 設定に応じて PNG 画像を生成
+        if config.generate_diagram_png and diagram_path:
+            rendered_path = diagram_gen.render_to_image(
+                mermaid_code=req.mermaid_code,
+                output_path=diagram_path,
+                theme=req.theme,
+                width=req.width,
+                height=req.height
+            )
+            outputs["diagram"] = str(rendered_path)
         res["mermaid_code"] = req.mermaid_code
+
+        # Markdown および Mermaid ファイルを保存
+        if config.generate_diagram_markdown:
+            diagram_md_path = config.output_directory / f"diagram_{file_id}.md"
+            diagram_gen.save_as_markdown(req.mermaid_code, diagram_md_path, title=res.get("title", "フローチャート"))
+            outputs["diagram_markdown"] = str(diagram_md_path)
+        if config.generate_diagram_mermaid:
+            diagram_mmd_path = config.output_directory / f"diagram_{file_id}.mmd"
+            diagram_gen.save_as_mermaid(req.mermaid_code, diagram_mmd_path)
+            outputs["diagram_mermaid"] = str(diagram_mmd_path)
 
         # PDF および Word の再生成
         from src.pdf_generator import create_formatted_pdf
@@ -426,7 +480,7 @@ async def save_mermaid_and_rebuild(file_id: str, req: MermaidRenderRequest) -> D
         if docx_path:
             create_word_document(content_text, Path(docx_path), title=doc_title, diagram_path=rendered_path)
 
-        return {"success": True, "message": "フロー図の保存とドキュメント再生成が完了しました。"}
+        return {"success": True, "message": "フロー図の保存とドキュメント再生成が完了しました。", "diagram_markdown": str(diagram_md_path), "diagram_mermaid": str(diagram_mmd_path)}
     except Exception as e:
         logger.error(f"Save & rebuild error: {e}")
         raise HTTPException(status_code=500, detail=f"再生成エラー: {str(e)}")

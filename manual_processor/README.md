@@ -4,6 +4,7 @@
 [![License](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
 [![Platform](https://img.shields.io/badge/platform-Windows%2010%2F11-win.svg)]()
 [![Tests](https://img.shields.io/badge/tests-252%20passed-brightgreen.svg)]()
+[![Coverage](https://img.shields.io/badge/coverage-12%25-red.svg)](https://codecov.io/)
 [![Status](https://img.shields.io/badge/status-production%20ready-brightgreen.svg)]()
 
 スキャンされた手書きマニュアル（PDF）を読み込み、**Google Gemini API** および **Google Cloud Vision API** を活用して高精度なOCR解析・初心者向けの要約および構造化を行い、**PDF**・**Word文書**・**音声ファイル(MP3/WAV)**・**フローチャート画像(PNG)** の複数フォーマットで自動出力するシステムです。
@@ -27,7 +28,8 @@
   - 大規模 PDF に対応した **バッチ並列 OCR & メモリ自動解放**（ページごとのリソース即時破棄）。
   - OCR 失敗ページのエラー状態トラッキング (`has_error`, `error_message`)。
 - 📦 **マルチフォーマット出力 & ドキュメント生成**
-  - 余白調整・絵文字挿入・コンパクトレイアウト対応の PDF / Word ドキュメント生成。
+  - 余白調整・絵表情入・コンパクトレイアウト対応の PDF / Word ドキュメント生成。
+  - フローチャートは **Markdown (.md)** を標準出力し、**PNG** と **Mermaid (.mmd)** は設定で切替可能。エディタでの編集が容易。
   - Google Cloud TTS / edge-tts / gTTS による多層バックオフ音声合成。
 - ✍️ **手書きPDFプロンプトエンジン**
   - 一字一句の書き起こし、判読不能文字、ルビ、ノイズ、縦書き・横書き、専門用語、図解、低品質画像に対応。

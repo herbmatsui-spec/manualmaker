@@ -11,6 +11,12 @@ from pathlib import Path
 from dataclasses import dataclass
 
 try:
+    import yaml
+    _HAS_YAML = True
+except ImportError:
+    _HAS_YAML = False
+
+try:
     import keyring
     _HAS_KEYRING = True
 except ImportError:
@@ -40,17 +46,64 @@ class SecurityManager:
     SERVICE_NAME = "manual_processor"
     API_KEY_USERNAME = "gemini_api_key"
 
-    PATTERNS: List[Tuple[str, str, str]] = [
-        ("EMAIL", r'[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}', "[REDACTED_EMAIL]"),
-        ("PHONE", r'0\d{1,4}-\d{1,4}-\d{4}', "[REDACTED_PHONE]"),
-        ("MY_NUMBER", r'\b\d{4}-\d{4}-\d{4}\b', "[REDACTED_MYNUMBER]"),
-        ("PASSPORT", r'\b[A-Z]{1,2}\d{7}\b', "[REDACTED_PASSPORT]"),
-        ("POSTAL", r'〒\s*\d{3}-\d{4}', "[REDACTED_POSTAL]"),
-        ("POSTAL_NOCOPY", r'(?<![a-zA-Z0-9])\d{3}-\d{4}(?![0-9])', "[REDACTED_POSTAL]"),
-        ("CREDIT_CARD", r'\b(?:4\d{3}|5[1-5]\d{2}|3[47]\d{2}|6(?:011|5\d{2}))[ -]?\d{4}[ -]?\d{4}[ -]?\d{1,4}\b', "[REDACTED_CARD]"),
-        ("IP_ADDRESS", r'\b(?:\d{1,3}\.){3}\d{1,3}\b', "[REDACTED_IP]"),
-        ("BANK_ACCOUNT", r'\b\d{6}-\d{8}\b', "[REDACTED_BANK]"),
-    ]
+    PATTERNS: List[Tuple[str, str, str]] = []
+
+    @classmethod
+    def _load_pii_patterns(cls) -> List[Tuple[str, str, str]]:
+        """
+        Load PII patterns from YAML configuration file.
+        
+        Returns:
+            List of tuples: (pattern_name, regex, mask)
+        """
+        if cls.PATTERNS:
+            return cls.PATTERNS
+
+        yaml_path = Path(__file__).parent.parent / "config" / "pii_patterns.yaml"
+        
+        if not yaml_path.exists():
+            logger.warning(f"PII patterns YAML not found at {yaml_path}, using defaults")
+            return cls._get_default_patterns()
+
+        try:
+            if not _HAS_YAML:
+                logger.warning("PyYAML not available, using default patterns")
+                return cls._get_default_patterns()
+
+            with open(yaml_path, "r", encoding="utf-8") as f:
+                config = yaml.safe_load(f)
+
+            patterns = []
+            for item in config.get("patterns", []):
+                if item.get("enabled", True):
+                    patterns.append((
+                        item["name"],
+                        item["regex"],
+                        item["mask"]
+                    ))
+
+            cls.PATTERNS = patterns
+            logger.info(f"Loaded {len(patterns)} PII patterns from {yaml_path}")
+            return patterns
+
+        except Exception as e:
+            logger.error(f"Failed to load PII patterns from YAML: {e}")
+            return cls._get_default_patterns()
+
+    @classmethod
+    def _get_default_patterns(cls) -> List[Tuple[str, str, str]]:
+        """Return hardcoded default patterns as fallback"""
+        return [
+            ("EMAIL", r'[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}', "[REDACTED_EMAIL]"),
+            ("PHONE", r'0\d{1,4}-\d{1,4}-\d{4}', "[REDACTED_PHONE]"),
+            ("MY_NUMBER", r'\b\d{4}-\d{4}-\d{4}\b', "[REDACTED_MYNUMBER]"),
+            ("PASSPORT", r'\b[A-Z]{1,2}\d{7}\b', "[REDACTED_PASSPORT]"),
+            ("POSTAL", r'〒\s*\d{3}-\d{4}', "[REDACTED_POSTAL]"),
+            ("POSTAL_NOCOPY", r'(?<![a-zA-Z0-9])\d{3}-\d{4}(?![0-9])', "[REDACTED_POSTAL]"),
+            ("CREDIT_CARD", r'\b(?:4\d{3}|5[1-5]\d{2}|3[47]\d{2}|6(?:011|5\d{2}))[ -]?\d{4}[ -]?\d{4}[ -]?\d{1,4}\b', "[REDACTED_CARD]"),
+            ("IP_ADDRESS", r'\b(?:\d{1,3}\.){3}\d{1,3}\b', "[REDACTED_IP]"),
+            ("BANK_ACCOUNT", r'\b\d{6}-\d{8}\b', "[REDACTED_BANK]"),
+        ]
 
     @classmethod
     def mask_sensitive_data(cls, text: str, record_positions: bool = False) -> Tuple[str, Dict[str, Any]]:
@@ -70,11 +123,12 @@ class SecurityManager:
         if not text:
             return "", {"counts": {}}
 
+        patterns = cls._load_pii_patterns()
         masked = text
         counts = {}
         positions = []
 
-        for p_name, pattern, replacement in cls.PATTERNS:
+        for p_name, pattern, replacement in patterns:
             matches = list(re.finditer(pattern, masked))
             if matches:
                 counts[p_name] = len(matches)

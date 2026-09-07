@@ -10,7 +10,7 @@ from typing import Optional, Dict, Any, Tuple
 
 try:
     from docx import Document
-    from docx.shared import Pt, Inches
+    from docx.shared import Pt, Inches, RGBColor
     from docx.enum.text import WD_ALIGN_PARAGRAPH
 except ImportError:
     Document = None
@@ -119,6 +119,7 @@ class WordGenerator:
     def generate_word(self, content: str, output_path: Path, title: str = "Processed Manual",
                       compact_layout: bool = False, use_emojis: bool = False,
                       diagram_path: Optional[Path] = None,
+                      qr_image_path: Optional[Path] = None,
                       template: Optional[Dict[str, Any]] = None) -> Path:
         """
         Generate a formatted Word document
@@ -130,6 +131,7 @@ class WordGenerator:
             compact_layout: If True, use compact layout
             use_emojis: If True, insert emojis
             diagram_path: Optional path to diagram image
+            qr_image_path: Optional path to QR code image (inserted after title)
             template: Optional template dictionary
         """
         if template:
@@ -157,6 +159,21 @@ class WordGenerator:
         if t.get("compact_mode"):
             for run in heading.runs:
                 run.font.size = Pt(t.get("title_font_size", 22))
+
+        # Insert QR code after title if present
+        if qr_image_path and Path(qr_image_path).exists():
+            try:
+                last_paragraph = document.paragraphs[-1]
+                last_paragraph.alignment = WD_ALIGN_PARAGRAPH.CENTER
+                run = last_paragraph.add_run()
+                run.add_picture(str(qr_image_path), width=Inches(1.5))
+                qr_caption = document.add_paragraph("🎵 スマホでQRをスキャンして音声再生")
+                qr_caption.alignment = WD_ALIGN_PARAGRAPH.CENTER
+                qr_caption.runs[0].font.size = Pt(9)
+                qr_caption.runs[0].font.color.rgb = RGBColor(128, 128, 128)
+                logger.info(f"Inserted QR image into Word document: {qr_image_path}")
+            except Exception as e:
+                logger.warning(f"Word へのQR挿入失敗: {e}")
 
         base_font_size = Pt(t.get("font_size", 11))
         for line in content.split('\n'):
@@ -217,6 +234,7 @@ class WordGenerator:
 def create_word_document(content: str, output_path: Path, title: str = "Processed Manual",
                          compact_layout: bool = False, use_emojis: bool = False,
                          diagram_path: Optional[Path] = None,
+                         qr_image_path: Optional[Path] = None,
                          template_name: str = None) -> Path:
     """
     Convenience function to generate Word document
@@ -228,6 +246,7 @@ def create_word_document(content: str, output_path: Path, title: str = "Processe
         compact_layout: If True, use compact layout
         use_emojis: If True, insert emojis
         diagram_path: Optional diagram image path
+        qr_image_path: Optional QR code image path
         template_name: Template name to use
     """
     generator = WordGenerator()
@@ -244,4 +263,5 @@ def create_word_document(content: str, output_path: Path, title: str = "Processe
 
     return generator.generate_word(content, output_path, title, compact_layout=compact_layout,
                                    use_emojis=use_emojis, diagram_path=diagram_path,
+                                   qr_image_path=qr_image_path,
                                    template=resolved)

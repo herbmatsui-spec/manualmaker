@@ -139,9 +139,35 @@ class PDFGenerator:
         except Exception as e:
             logger.warning(f"PDF への画像挿入失敗: {e}")
 
+    def insert_qr_image(self, pdf: FPDF, image_path: Path,
+                        caption: str = "スマホでQRをスキャンして音声再生",
+                        font_name: str = "JPFont",
+                        qr_width: float = 40) -> None:
+        """PDF のタイトルページにQRコードを挿入"""
+        if not image_path or not Path(image_path).exists():
+            return
+
+        try:
+            pdf.ln(4)
+            if font_name != "Helvetica":
+                pdf.set_font(font_name, "", 10)
+                pdf.cell(0, 6, caption, ln=True, align="C")
+            else:
+                pdf.set_font("Helvetica", "", 10)
+                pdf.cell(0, 6, "[Scan QR code for audio playback]", ln=True, align="C")
+            pdf.ln(2)
+
+            page_width = pdf.w - pdf.l_margin - pdf.r_margin
+            x_centered = (page_width - qr_width) / 2 + pdf.l_margin
+            pdf.image(str(image_path), x=x_centered, w=qr_width)
+            logger.info(f"Inserted QR image into PDF: {image_path}")
+        except Exception as e:
+            logger.warning(f"PDF へのQR挿入失敗: {e}")
+
     def generate_pdf(self, content: str, output_path: Path, title: str = "Processed Manual",
                      compact_layout: bool = False, use_emojis: bool = False,
                      diagram_path: Optional[Path] = None,
+                     qr_image_path: Optional[Path] = None,
                      template: Optional[Dict[str, Any]] = None) -> Path:
         """
         Generate a formatted PDF document
@@ -153,6 +179,7 @@ class PDFGenerator:
             compact_layout: If True, use compact layout (for backwards compatibility)
             use_emojis: If True, insert emojis
             diagram_path: Optional path to diagram image
+            qr_image_path: Optional path to QR code image (inserted on title page)
             template: Optional template dictionary. If provided, template settings override
                      compact_layout and use_emojis flags.
         """
@@ -228,6 +255,10 @@ class PDFGenerator:
         pdf.cell(0, (10 if t.get("compact_mode") else 15), display_title, ln=True, align="C")
         pdf.ln((6 if t.get("compact_mode") else 10))
 
+        # Insert QR code on title page if present
+        if qr_image_path and Path(qr_image_path).exists():
+            self.insert_qr_image(pdf, Path(qr_image_path), font_name=font_name)
+
         # Content
         pdf.set_font(font_name, size=t.get("font_size", 11))
         body_line_height = t.get("body_line_height", 8)
@@ -273,6 +304,7 @@ class PDFGenerator:
 def create_formatted_pdf(content: str, output_path: Path, title: str = "Processed Manual",
                          compact_layout: bool = False, use_emojis: bool = False,
                          diagram_path: Optional[Path] = None,
+                         qr_image_path: Optional[Path] = None,
                          template_name: str = None) -> Path:
     """
     Convenience function to generate PDF
@@ -284,6 +316,7 @@ def create_formatted_pdf(content: str, output_path: Path, title: str = "Processe
         compact_layout: If True, use compact layout (for backwards compatibility)
         use_emojis: If True, insert emojis
         diagram_path: Optional path to diagram image
+        qr_image_path: Optional path to QR code image
         template_name: Template name to use (e.g., "default", "compact").
                       If None, uses compact_layout/emoji flags for backwards compatibility.
     """
@@ -308,5 +341,6 @@ def create_formatted_pdf(content: str, output_path: Path, title: str = "Processe
         compact_layout=compact_layout,
         use_emojis=use_emojis,
         diagram_path=diagram_path,
+        qr_image_path=qr_image_path,
         template=resolved
     )

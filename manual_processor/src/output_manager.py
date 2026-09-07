@@ -1,7 +1,7 @@
 # manual_processor/src/output_manager.py
 import logging
 from pathlib import Path
-from typing import Dict, Any
+from typing import Dict, Any, Optional
 from dataclasses import dataclass
 
 from .gemini_processor import GeminiResult
@@ -10,6 +10,7 @@ from .docx_generator import create_word_document
 from .audio_generator import AudioGenerator
 from .exceptions import PDFGenerationError, DocxGenerationError, TTSError
 from .utils.result_formatter import format_to_markdown
+from .qr_generator import QRGenerator, QRCodeError
 
 logger = logging.getLogger(__name__)
 
@@ -20,6 +21,9 @@ class OutputFiles:
     docx_path: Path
     audio_path: Path
     metadata: Dict[str, Any]
+    qr_path: Optional[Path] = None
+    diagram_markdown_path: Optional[Path] = None
+    diagram_mermaid_path: Optional[Path] = None
 
 @dataclass
 class OutputConfig:
@@ -29,10 +33,14 @@ class OutputConfig:
     include_pdf: bool = True
     include_docx: bool = True
     include_audio: bool = True
+    include_qr: bool = True
+    include_diagram_markdown: bool = True
+    include_diagram_mermaid: bool = True
     language_code: str = "ja-JP"
     voice_name: str = "ja-JP-Standard-A"
     speaking_rate: float = 1.0
     pitch: float = 0.0
+    base_url: str = "http://localhost:8000"
 
 def _extract_audio_text(content: Any, formatted_text: str) -> str:
     """音声合成用テキストを抽出するヘルパー関数"""
@@ -43,10 +51,11 @@ def _extract_audio_text(content: Any, formatted_text: str) -> str:
     return formatted_text
 
 def save_all_formats(content: GeminiResult, base_output_path: Path,
-                    config: OutputConfig,
-                    title: str = "処理済みマニュアル",
-                    compact_layout: bool = False,
-                    use_emojis: bool = False) -> OutputFiles:
+                     config: OutputConfig,
+                     title: str = "処理済みマニュアル",
+                     compact_layout: bool = False,
+                     use_emojis: bool = False,
+                     file_id: Optional[str] = None) -> OutputFiles:
     """
     すべての出力形式（PDF, Word, Audio）を一括で保存するメイン関数
     """
@@ -62,29 +71,19 @@ def save_all_formats(content: GeminiResult, base_output_path: Path,
     errors = []
     formatted_text = format_to_markdown(content)
     
-    # PDF生成
-    if config.include_pdf:
+    # QRコード生成
+    qr_path = None
+    if config.include_qr and file_id:
         try:
-            pdf_path = create_formatted_pdf(formatted_text, pdf_path, title, compact_layout=compact_layout, use_emojis=use_emojis)
-            logger.info(f"PDF出力完了: {pdf_path}")
-        except PDFGenerationError as e:
-            logger.error(f"PDF生成失敗: {e}")
-            errors.append(f"PDF: {str(e)}")
+            qr_generator = QRGenerator()
+            playback_url = f"{config.base_url.rstrip('/')}/api/download/{file_id}/audio"
+            qr_output = config.output_directory / f"{base_name}_qr.png"
+            qr_path = qr_generator.generate_qr(playback_url, qr_output, title=title)
+            logger.info(f"QRコード生成完了: {qr_path}")
+        except QRCodeError as e:
+            logger.warning(f"QRコード生成失敗（処理は続行）: {e}")
         except Exception as e:
-            logger.error(f"PDF生成中の予期せぬエラー: {e}")
-            errors.append(f"PDF: 予期せぬエラー - {str(e)}")
-    
-    # Word文書生成
-    if config.include_docx:
-        try:
-            docx_path = create_word_document(formatted_text, docx_path, title, compact_layout=compact_layout, use_emojis=use_emojis)
-            logger.info(f"Word出力完了: {docx_path}")
-        except DocxGenerationError as e:
-            logger.error(f"Word生成失敗: {e}")
-            errors.append(f"Word: {str(e)}")
-        except Exception as e:
-            logger.error(f"Word生成中の予期せぬエラー: {e}")
-            errors.append(f"Word: 予期せぬエラー - {str(e)}")
+            logger.warning(f"QRコード生成中の予期せぬエラー: {e}")
     
     # 音声生成
     if config.include_audio:
@@ -105,6 +104,30 @@ def save_all_formats(content: GeminiResult, base_output_path: Path,
             logger.error(f"音声生成中の予期せぬエラー: {e}")
             errors.append(f"Audio: 予期せぬエラー - {str(e)}")
     
+    # PDF生成
+    if config.include_pdf:
+        try:
+            pdf_path = create_formatted_pdf(formatted_text, pdf_path, title, compact_layout=compact_layout, use_emojis=use_emojis, qr_image_path=qr_path)
+            logger.info(f"PDF出力完了: {pdf_path}")
+        except PDFGenerationError as e:
+            logger.error(f"PDF生成失敗: {e}")
+            errors.append(f"PDF: {str(e)}")
+        except Exception as e:
+            logger.error(f"PDF生成中の予期せぬエラー: {e}")
+            errors.append(f"PDF: 予期せぬエラー - {str(e)}")
+    
+    # Word文書生成
+    if config.include_docx:
+        try:
+            docx_path = create_word_document(formatted_text, docx_path, title, compact_layout=compact_layout, use_emojis=use_emojis, qr_image_path=qr_path)
+            logger.info(f"Word出力完了: {docx_path}")
+        except DocxGenerationError as e:
+            logger.error(f"Word生成失敗: {e}")
+            errors.append(f"Word: {str(e)}")
+        except Exception as e:
+            logger.error(f"Word生成中の予期せぬエラー: {e}")
+            errors.append(f"Word: 予期せぬエラー - {str(e)}")
+    
     # エラーがあれば警告を出す
     if errors:
         logger.warning(f"出力生成でエラーが発生: {errors}")
@@ -123,14 +146,18 @@ def save_all_formats(content: GeminiResult, base_output_path: Path,
         pdf_path=pdf_path,
         docx_path=docx_path,
         audio_path=audio_path,
-        metadata=metadata
+        qr_path=qr_path,
+        metadata=metadata,
+        diagram_markdown_path=None,
+        diagram_mermaid_path=None
     )
 
 def save_single_format(content: Any, output_path: Path,
                        format_type: str,
                        title: str = "処理済みマニュアル",
                        compact_layout: bool = False,
-                       use_emojis: bool = False) -> Path:
+                       use_emojis: bool = False,
+                       file_id: Optional[str] = None) -> Path:
     """
     単一の出力形式のみを保存する関数
     """
@@ -145,5 +172,15 @@ def save_single_format(content: Any, output_path: Path,
         audio_generator = AudioGenerator()
         audio_text = _extract_audio_text(content, formatted_text)
         return audio_generator.generate_audio(audio_text, output_path)
+    elif format_type == 'diagram_markdown':
+        from src.diagram_generator import DiagramGenerator
+        gen = DiagramGenerator.__new__(DiagramGenerator)
+        mermaid_code = content if isinstance(content, str) else getattr(content, 'mermaid_code', '')
+        return gen.save_as_markdown(mermaid_code, output_path, title=title)
+    elif format_type == 'diagram_mermaid':
+        from src.diagram_generator import DiagramGenerator
+        gen = DiagramGenerator.__new__(DiagramGenerator)
+        mermaid_code = content if isinstance(content, str) else getattr(content, 'mermaid_code', '')
+        return gen.save_as_mermaid(mermaid_code, output_path)
     else:
         raise ValueError(f"サポートされていない出力形式です: {format_type}")

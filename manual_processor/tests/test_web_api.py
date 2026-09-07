@@ -3,9 +3,10 @@ Unit Tests for Web API and Phase 2 Endpoints
 """
 
 import pytest
+from pathlib import Path
 from fastapi.testclient import TestClient
 
-from src.web.app import app
+from src.web.app import app, PROCESSING_RESULTS
 
 client = TestClient(app)
 
@@ -68,3 +69,56 @@ def test_process_options_accepts_prompt_settings():
     assert options.prompt_layout == "vertical"
     assert options.prompt_strict_mode is True
     assert options.prompt_has_diagrams is True
+
+
+def test_download_diagram_markdown(tmp_path):
+    file_id = "test_dl_md"
+    md_file = tmp_path / "test.md"
+    md_file.write_text("# フローチャート\n\n```mermaid\nflowchart TD\nA-->B\n```\n", encoding="utf-8")
+    PROCESSING_RESULTS[file_id] = {
+        "output_files": {
+            "diagram_markdown": str(md_file),
+            "pdf": str(tmp_path / "test.pdf"),
+        }
+    }
+    response = client.get(f"/api/download/{file_id}/diagram_markdown")
+    assert response.status_code == 200
+    assert response.headers["content-type"] == "text/markdown; charset=utf-8"
+    assert "flowchart TD" in response.text
+    del PROCESSING_RESULTS[file_id]
+
+
+def test_download_diagram_fallback_to_markdown(tmp_path):
+    file_id = "test_dl_fallback"
+    md_file = tmp_path / "test.md"
+    md_file.write_text("# フローチャート\n\n```mermaid\nflowchart TD\nA-->B\n```\n", encoding="utf-8")
+    PROCESSING_RESULTS[file_id] = {
+        "output_files": {
+            "diagram": None,
+            "diagram_markdown": str(md_file),
+        }
+    }
+    response = client.get(f"/api/download/{file_id}/diagram")
+    assert response.status_code == 200
+    assert response.headers["content-type"] == "text/markdown; charset=utf-8"
+    del PROCESSING_RESULTS[file_id]
+
+
+def test_download_all_zip(tmp_path):
+    file_id = "test_dl_all"
+    md_file = tmp_path / "test.md"
+    md_file.write_text("# フローチャート\n", encoding="utf-8")
+    pdf_file = tmp_path / "test.pdf"
+    pdf_file.write_bytes(b"%PDF-1.4 dummy")
+    PROCESSING_RESULTS[file_id] = {
+        "output_files": {
+            "diagram_markdown": str(md_file),
+            "pdf": str(pdf_file),
+        }
+    }
+    response = client.get(f"/api/download/{file_id}/all")
+    assert response.status_code == 200
+    assert response.headers["content-type"] == "application/zip"
+    assert "attachment" in response.headers["content-disposition"]
+    assert file_id in response.headers["content-disposition"]
+    del PROCESSING_RESULTS[file_id]

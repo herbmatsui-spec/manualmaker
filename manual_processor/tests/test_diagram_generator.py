@@ -67,3 +67,74 @@ class TestFallbackImage:
         )
         assert result.exists()
         assert result.stat().st_size > 0
+
+
+class TestSaveAsMarkdown:
+    """Markdown 保存のテスト"""
+
+    def test_save_as_markdown(self, tmp_path):
+        gen = DiagramGenerator.__new__(DiagramGenerator)
+        output = tmp_path / "test.md"
+        result = gen.save_as_markdown("flowchart TD\nA-->B", output, "Test")
+        assert result.exists()
+        content = result.read_text(encoding="utf-8")
+        assert "# Test" in content
+        assert "```mermaid" in content
+        assert "flowchart TD" in content
+
+    def test_save_as_markdown_default_title(self, tmp_path):
+        gen = DiagramGenerator.__new__(DiagramGenerator)
+        output = tmp_path / "test.md"
+        result = gen.save_as_markdown("A[開始]", output)
+        assert result.exists()
+        assert "# フローチャート" in result.read_text(encoding="utf-8")
+
+
+class TestSaveAsMermaid:
+    """Mermaid 保存のテスト"""
+
+    def test_save_as_mermaid(self, tmp_path):
+        gen = DiagramGenerator.__new__(DiagramGenerator)
+        output = tmp_path / "test.mmd"
+        result = gen.save_as_mermaid("flowchart TD\nA-->B", output)
+        assert result.exists()
+        assert result.read_text(encoding="utf-8") == "flowchart TD\nA-->B"
+
+
+class TestGenerateOptionalOutputs:
+    """generate() のオプション出力テスト"""
+
+    def test_generate_without_png(self, tmp_path):
+        gen = DiagramGenerator.__new__(DiagramGenerator)
+        gen.generate_mermaid_code = lambda *a, **k: "flowchart TD\nA-->B"
+        gen.validate_mermaid_code = lambda code: (True, "")
+        result = gen.generate(
+            "text",
+            [],
+            [],
+            output_path=None,
+            markdown_path=tmp_path / "out.md",
+            mermaid_path=tmp_path / "out.mmd"
+        )
+        assert result.image_path is None
+        assert result.markdown_path is not None
+        assert result.mermaid_path is not None
+        assert (tmp_path / "out.md").exists()
+        assert (tmp_path / "out.mmd").exists()
+
+    def test_generate_with_png_and_md(self, tmp_path):
+        gen = DiagramGenerator.__new__(DiagramGenerator)
+        gen.generate_mermaid_code = lambda *a, **k: "flowchart TD\nA-->B"
+        gen.validate_mermaid_code = lambda code: (True, "")
+        gen.render_to_image = lambda *a, **k: tmp_path / "out.png"
+        result = gen.generate(
+            "text",
+            [],
+            [],
+            output_path=tmp_path / "out.png",
+            markdown_path=tmp_path / "out.md",
+            mermaid_path=tmp_path / "out.mmd"
+        )
+        assert result.image_path is not None
+        assert result.markdown_path is not None
+        assert result.mermaid_path is not None
