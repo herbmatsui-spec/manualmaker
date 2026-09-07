@@ -132,7 +132,7 @@ def test_security_manager():
     masked, info = SecurityManager.mask_sensitive_data(sensitive, record_positions=True)
     assert "[REDACTED_PHONE]" in masked
     assert "[REDACTED_EMAIL]" in masked
-    assert info["counts"].get("PHONE") == 1
+    assert info["counts"].get("PHONE_JP") == 1
     assert info["counts"].get("EMAIL") == 1
 
     assert "positions" in info

@@ -9,7 +9,7 @@ from pathlib import Path
 from typing import Optional, Dict, Any
 from dataclasses import dataclass
 
-from src.security.keyring_store import keyring_store
+from src.security.keyring_store import get_api_key, set_api_key, delete_api_key, key_exists
 
 logger = logging.getLogger(__name__)
 
@@ -52,7 +52,7 @@ class GoogleDriveManager:
 
     def is_authenticated(self) -> bool:
         """Check if user has stored refresh token"""
-        return keyring_store.key_exists(KEYRING_SERVICE, KEYRING_REFRESH_TOKEN_USERNAME)
+        return key_exists(KEYRING_SERVICE, KEYRING_REFRESH_TOKEN_USERNAME)
 
     def get_authorization_url(self, redirect_uri: Optional[str] = None) -> str:
         """
@@ -134,12 +134,12 @@ class GoogleDriveManager:
                 "scopes": list(creds.scopes or SCOPES),
             }
 
-            keyring_store.set_api_key(
+            set_api_key(
                 KEYRING_SERVICE,
                 KEYRING_REFRESH_TOKEN_USERNAME,
                 creds.refresh_token,
             )
-            keyring_store.set_api_key(
+            set_api_key(
                 KEYRING_SERVICE,
                 KEYRING_CREDENTIALS_USERNAME,
                 json.dumps(token_info),
@@ -161,11 +161,11 @@ class GoogleDriveManager:
         except ImportError as e:
             raise GoogleDriveError("Google auth libraries not installed") from e
 
-        refresh_token = keyring_store.get_api_key(KEYRING_SERVICE, KEYRING_REFRESH_TOKEN_USERNAME)
+        refresh_token = get_api_key(KEYRING_SERVICE, KEYRING_REFRESH_TOKEN_USERNAME)
         if not refresh_token:
             raise GoogleDriveError("Not authenticated. No refresh token found.")
 
-        creds_json = keyring_store.get_api_key(KEYRING_SERVICE, KEYRING_CREDENTIALS_USERNAME)
+        creds_json = get_api_key(KEYRING_SERVICE, KEYRING_CREDENTIALS_USERNAME)
         if creds_json:
             try:
                 token_info = json.loads(creds_json)
@@ -200,7 +200,7 @@ class GoogleDriveManager:
                     "client_secret": creds.client_secret,
                     "scopes": list(creds.scopes or SCOPES),
                 }
-                keyring_store.set_api_key(
+                set_api_key(
                     KEYRING_SERVICE,
                     KEYRING_CREDENTIALS_USERNAME,
                     json.dumps(token_info),
@@ -329,8 +329,8 @@ class GoogleDriveManager:
     def revoke_authentication(self) -> None:
         """Remove stored refresh token and credentials"""
         try:
-            keyring_store.delete_api_key(KEYRING_SERVICE, KEYRING_REFRESH_TOKEN_USERNAME)
-            keyring_store.delete_api_key(KEYRING_SERVICE, KEYRING_CREDENTIALS_USERNAME)
+            delete_api_key(KEYRING_SERVICE, KEYRING_REFRESH_TOKEN_USERNAME)
+            delete_api_key(KEYRING_SERVICE, KEYRING_CREDENTIALS_USERNAME)
             self._creds = None
             logger.info("Revoked Google Drive authentication")
         except Exception as e:

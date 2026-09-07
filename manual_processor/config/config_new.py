@@ -128,25 +128,49 @@ class AppConfig:
     def prompt_layout(self) -> str:
         return self._settings.prompt.layout
 
+    @prompt_layout.setter
+    def prompt_layout(self, value: str) -> None:
+        self._settings.prompt.layout = value
+
     @property
     def prompt_domain_terms(self) -> List[str]:
         return self._settings.prompt.domain_terms
+
+    @prompt_domain_terms.setter
+    def prompt_domain_terms(self, value: List[str]) -> None:
+        self._settings.prompt.domain_terms = value
 
     @property
     def prompt_has_diagrams(self) -> bool:
         return self._settings.prompt.has_diagrams
 
+    @prompt_has_diagrams.setter
+    def prompt_has_diagrams(self, value: bool) -> None:
+        self._settings.prompt.has_diagrams = value
+
     @property
     def prompt_low_quality_mode(self) -> bool:
         return self._settings.prompt.low_quality_mode
+
+    @prompt_low_quality_mode.setter
+    def prompt_low_quality_mode(self, value: bool) -> None:
+        self._settings.prompt.low_quality_mode = value
 
     @property
     def prompt_strict_mode(self) -> bool:
         return self._settings.prompt.strict_mode
 
+    @prompt_strict_mode.setter
+    def prompt_strict_mode(self, value: bool) -> None:
+        self._settings.prompt.strict_mode = value
+
     @property
     def prompt_custom_rules(self) -> List[str]:
         return self._settings.prompt.custom_rules
+
+    @prompt_custom_rules.setter
+    def prompt_custom_rules(self, value: List[str]) -> None:
+        self._settings.prompt.custom_rules = value
 
     @property
     def generate_diagram(self) -> bool:
