@@ -1,4 +1,6 @@
-# 手書きマニュアル処理システム (Manual Processor) v2.1
+# 手書きマニュアル処理システム (Manual Processor) v2.3
+
+# v2.3 アップデート: 一部のバグ修正と機能改善
 
 [![Python Version](https://img.shields.io/badge/python-3.8%2B-blue.svg)](https://www.python.org/)
 [![License](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
