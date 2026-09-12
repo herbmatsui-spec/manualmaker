@@ -1,12 +1,10 @@
-# 手書きマニュアル処理システム (Manual Processor) v2.3
-
-# v2.3 アップデート: 一部のバグ修正と機能改善
+# 手書きマニュアル処理システム (Manual Processor) v2.5
 
 [![Python Version](https://img.shields.io/badge/python-3.8%2B-blue.svg)](https://www.python.org/)
 [![License](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
 [![Platform](https://img.shields.io/badge/platform-Windows%2010%2F11-win.svg)]()
-[![Tests](https://img.shields.io/badge/tests-252%20passed-brightgreen.svg)]()
-[![Coverage](https://img.shields.io/badge/coverage-12%25-red.svg)](https://codecov.io/)
+[![Tests](https://img.shields.io/badge/tests-1121%20passed-brightgreen.svg)]()
+[![Coverage](https://img.shields.io/badge/coverage-86%25-brightgreen.svg)](https://codecov.io/)
 [![Status](https://img.shields.io/badge/status-production%20ready-brightgreen.svg)]()
 
 スキャンされた手書きマニュアル（PDF）を読み込み、**Google Gemini API** および **Google Cloud Vision API** を活用して高精度なOCR解析・初心者向けの要約および構造化を行い、**PDF**・**Word文書**・**音声ファイル(MP3/WAV)**・**フローチャート画像(PNG)** の複数フォーマットで自動出力するシステムです。
@@ -67,7 +65,7 @@ manual_processor/
 │   ├── processor/           # プロセッサーファクトリー & ハイブリッド切り替え
 │   ├── gui/                 # デスクトップ GUI モジュール
 │   └── web/                 # FastAPI Web UI バックエンド & フロントエンド
-├── tests/                   # pytest テストスイート (252件)
+├── tests/                   # pytest テストスイート (1121件)
 ├── scripts/                 # スタンドアロン exe ビルドスクリプト等
 ├── main.py                  # アプリケーション共通エントリーポイント
 └── requirements.txt         # 依存ライブラリ一覧
@@ -137,13 +135,13 @@ python scripts/build_exe.py
 
 ## 🧪 テストの実行
 
-全252件のユニットテスト・統合テストを実行します：
+全1121件のユニットテスト・統合テストを実行します：
 
 ```bash
 python -m pytest tests/ -v
 ```
 
-現在のテスト件数は252件です。外部AI APIを使用するテストはモックで実行します。
+現在のテスト件数は1121件です。外部AI APIを使用するテストはモックで実行します。
 
 ---
 

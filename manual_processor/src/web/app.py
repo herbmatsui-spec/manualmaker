@@ -5,10 +5,12 @@ FastAPI Web Server for Manual Processor
 import logging
 from typing import Dict, Any, Optional
 from pathlib import Path
-from fastapi import FastAPI, Request
+from fastapi import FastAPI, Request, UploadFile, File, HTTPException
+from fastapi.responses import FileResponse, RedirectResponse, StreamingResponse
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
+from pydantic import BaseModel
 
 from config.config import Config
 from src.i18n_manager import I18nManager
@@ -47,6 +49,31 @@ app.add_middleware(
     expose_headers=["Content-Disposition"],
     max_age=600,
 )
+
+
+class SetLanguageRequest(BaseModel):
+    language: str
+
+
+class ProcessOptions(BaseModel):
+    compact_layout: bool = False
+    use_emojis: bool = False
+    prompt_layout: Optional[str] = None
+    prompt_strict_mode: Optional[bool] = None
+    prompt_has_diagrams: Optional[bool] = None
+    prompt_low_quality_mode: Optional[bool] = None
+
+
+class MermaidRenderRequest(BaseModel):
+    mermaid_code: str
+    theme: str = "default"
+    width: int = 800
+    height: int = 600
+
+
+class MermaidRegenerateRequest(BaseModel):
+    current_code: str
+    instruction: str
 
 
 @app.get("/")
@@ -90,7 +117,7 @@ async def get_available_languages() -> Dict[str, Any]:
 
 
 @app.post("/api/i18n/set")
-async def set_language(req: "SetLanguageRequest") -> Dict[str, str]:
+async def set_language(req: SetLanguageRequest) -> Dict[str, str]:
     """言語を設定"""
     i18n_manager.set_language(req.language)
     return {"status": "ok", "language": i18n_manager.current_lang}
@@ -150,11 +177,12 @@ async def mask_text(req: dict) -> Dict[str, Any]:
 
 
 import uuid
-from pathlib import Path
-from fastapi import UploadFile, File, HTTPException
 
 # アップロード済みファイルのメタデータキャッシュ
 UPLOADED_FILES: Dict[str, Dict[str, Any]] = {}
+
+# 処理結果のインメモリキャッシュ
+PROCESSING_RESULTS: Dict[str, Dict[str, Any]] = {}
 
 
 @app.post("/api/upload")
@@ -208,24 +236,9 @@ async def list_uploads() -> Dict[str, Any]:
     return {"uploads": list(UPLOADED_FILES.values())}
 
 
-from pydantic import BaseModel
 from src.processor.processor import DocumentProcessor
 
-# 処理結果のインメモリキャッシュ
 PROCESSING_RESULTS: Dict[str, Dict[str, Any]] = {}
-
-
-class SetLanguageRequest(BaseModel):
-    language: str
-
-
-class ProcessOptions(BaseModel):
-    compact_layout: bool = False
-    use_emojis: bool = False
-    prompt_layout: Optional[str] = None
-    prompt_strict_mode: Optional[bool] = None
-    prompt_has_diagrams: Optional[bool] = None
-    prompt_low_quality_mode: Optional[bool] = None
 
 
 @app.post("/api/process/{file_id}")
@@ -290,9 +303,6 @@ async def websocket_progress(websocket: WebSocket, file_id: str):
         ACTIVE_WEBSOCKETS.pop(file_id, None)
 
 
-from fastapi.responses import FileResponse
-
-
 @app.get("/api/download/{file_id}/{file_type}")
 async def download_file_api(file_id: str, file_type: str):
     """生成ファイルのダウンロード API (file_type: pdf, docx, audio, diagram, diagram_markdown, diagram_mermaid, all)"""
@@ -349,13 +359,6 @@ async def download_file_api(file_id: str, file_type: str):
 from src.diagram_generator import DiagramGenerator
 
 
-class MermaidRenderRequest(BaseModel):
-    mermaid_code: str
-    theme: str = "default"
-    width: int = 800
-    height: int = 600
-
-
 @app.post("/api/mermaid/validate")
 async def validate_mermaid(req: MermaidRenderRequest) -> Dict[str, Any]:
     """Mermaid.js コードの簡易構文検証"""
@@ -394,11 +397,6 @@ async def render_mermaid(req: MermaidRenderRequest):
     except Exception as e:
         logger.error(f"Mermaid rendering error: {e}")
         raise HTTPException(status_code=400, detail=f"レンダリング失敗: {str(e)}")
-
-
-class MermaidRegenerateRequest(BaseModel):
-    current_code: str
-    instruction: str
 
 
 @app.post("/api/mermaid/regenerate")
@@ -485,9 +483,6 @@ async def save_mermaid_and_rebuild(file_id: str, req: MermaidRenderRequest) -> D
     except Exception as e:
         logger.error(f"Save & rebuild error: {e}")
         raise HTTPException(status_code=500, detail=f"再生成エラー: {str(e)}")
-
-
-from fastapi.responses import RedirectResponse
 
 
 def _get_drive_manager() -> GoogleDriveManager:

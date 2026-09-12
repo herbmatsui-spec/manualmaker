@@ -2,7 +2,7 @@ from setuptools import setup, find_packages
 
 setup(
     name="manual_processor",
-    version="2.3.0",
+    version="2.5.0",
     description="Handwritten Manual Processor for Windows with Google Cloud AI",
     author="Manual Processor Team",
     packages=find_packages(where=".", include=["src*", "config*"]),
