@@ -231,11 +231,17 @@ class AppConfig:
 
     @property
     def google_api_key(self) -> str:
-        return ""
+        key = os.getenv("GOOGLE_API_KEY", "")
+        if not key and os.getenv("GEMINI_API_KEY"):
+            key = os.getenv("GEMINI_API_KEY")
+        return key
 
     @property
     def gemini_api_key(self) -> str:
-        return ""
+        key = os.getenv("GEMINI_API_KEY", "")
+        if not key and os.getenv("GOOGLE_API_KEY"):
+            key = os.getenv("GOOGLE_API_KEY")
+        return key
 
     @property
     def ocr_model(self) -> str:

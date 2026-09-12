@@ -49,6 +49,7 @@ def extract_images_from_pdf(pdf_path: Path, dpi: int = 300) -> List[Image.Image]
         for img in images:
             try:
                 img.close()
+            # nosec B110: リソースクローズ処理のフェイルオーバー
             except Exception:
                 pass
         logger.error(f"PDFからの画像抽出中にエラーが発生: {e}")

@@ -300,3 +300,327 @@ class TestCalculateOverallConfidence:
         result = OCRProcessor.calculate_overall_confidence(results)
         expected = (0.9 * 1 + 0.5 * 7) / 8
         assert abs(result - expected) < 0.001
+
+
+class TestOCRProcessorPerformOcr:
+    """Test OCRProcessor.perform_ocr_on_image method"""
+
+    @patch('src.ocr_processor._HAS_GOOGLE_VISION', True)
+    def test_client_none_raises_ocr_error(self):
+        processor = OCRProcessor.__new__(OCRProcessor)
+        processor.client = None
+
+        with pytest.raises(Exception) as exc_info:
+            processor.perform_ocr_on_image(Image.new('RGB', (10, 10)))
+        assert "初期化されていません" in str(exc_info.value)
+
+    @patch('src.ocr_processor._HAS_GOOGLE_VISION', True)
+    def test_success_path(self):
+        processor = OCRProcessor.__new__(OCRProcessor)
+        processor.client = Mock()
+        processor.timeout = 30
+        processor.prompt_builder = None
+
+        mock_response = Mock()
+        mock_response.error.message = ""
+        mock_response.full_text_annotation = None
+        processor.client.document_text_detection.return_value = mock_response
+
+        image = Image.new('RGB', (10, 10))
+        result = processor.perform_ocr_on_image(image)
+
+        assert result.text == ""
+        assert result.page_number == 1
+        processor.client.document_text_detection.assert_called_once()
+
+    @patch('src.ocr_processor._HAS_GOOGLE_VISION', True)
+    def test_success_with_language_hints(self):
+        processor = OCRProcessor.__new__(OCRProcessor)
+        processor.client = Mock()
+        processor.timeout = 30
+        processor.prompt_builder = None
+
+        mock_response = Mock()
+        mock_response.error.message = ""
+        mock_response.full_text_annotation = None
+        processor.client.document_text_detection.return_value = mock_response
+
+        processor.perform_ocr_on_image(Image.new('RGB', (10, 10)), language_hints=['en'])
+        kwargs = processor.client.document_text_detection.call_args.kwargs
+        assert kwargs["image_context"].language_hints == ['en']
+
+    @patch('src.ocr_processor._HAS_GOOGLE_VISION', True)
+    def test_api_error_message_raises(self):
+        import src.ocr_processor as ocr_mod
+        processor = OCRProcessor.__new__(OCRProcessor)
+        processor.client = Mock()
+        processor.timeout = 30
+        processor.prompt_builder = None
+
+        mock_response = Mock()
+        mock_response.error.message = "quota exceeded"
+        processor.client.document_text_detection.return_value = mock_response
+
+        with pytest.raises(ocr_mod.OCRError) as exc_info:
+            processor.perform_ocr_on_image(Image.new('RGB', (10, 10)))
+        assert "Vision APIエラー" in str(exc_info.value)
+
+    @patch('src.ocr_processor._HAS_GOOGLE_VISION', True)
+    def test_google_api_call_error(self):
+        import src.ocr_processor as ocr_mod
+        processor = OCRProcessor.__new__(OCRProcessor)
+        processor.client = Mock()
+        processor.timeout = 30
+        processor.prompt_builder = None
+        processor.client.document_text_detection.side_effect = ocr_mod.GoogleAPICallError("api down")
+
+        with pytest.raises(ocr_mod.OCRError) as exc_info:
+            processor.perform_ocr_on_image(Image.new('RGB', (10, 10)))
+        assert "OCR API呼び出しに失敗しました" in str(exc_info.value)
+
+    @patch('src.ocr_processor._HAS_GOOGLE_VISION', True)
+    def test_retry_error(self):
+        # RetryError は GoogleAPICallError のサブクラスのため、
+        # モジュール名をパッチして except RetryError 経路を分離する
+        class FakeRetryError(Exception):
+            pass
+
+        processor = OCRProcessor.__new__(OCRProcessor)
+        processor.client = Mock()
+        processor.timeout = 30
+        processor.prompt_builder = None
+        processor.client.document_text_detection.side_effect = FakeRetryError("retry failed")
+
+        import src.ocr_processor as ocr_mod
+        with patch('src.ocr_processor.RetryError', FakeRetryError):
+            with pytest.raises(ocr_mod.OCRError) as exc_info:
+                processor.perform_ocr_on_image(Image.new('RGB', (10, 10)))
+        assert "タイムアウトしました" in str(exc_info.value)
+
+    @patch('src.ocr_processor._HAS_GOOGLE_VISION', True)
+    def test_deadline_exceeded(self):
+        # DeadlineExceeded は GoogleAPICallError のサブクラスのため、
+        # モジュール名をパッチして except DeadlineExceeded 経路を分離する
+        class FakeDeadlineExceeded(Exception):
+            pass
+
+        processor = OCRProcessor.__new__(OCRProcessor)
+        processor.client = Mock()
+        processor.timeout = 30
+        processor.prompt_builder = None
+        processor.client.document_text_detection.side_effect = FakeDeadlineExceeded("deadline")
+
+        import src.ocr_processor as ocr_mod
+        with patch('src.ocr_processor.DeadlineExceeded', FakeDeadlineExceeded):
+            with pytest.raises(ocr_mod.OCRError) as exc_info:
+                processor.perform_ocr_on_image(Image.new('RGB', (10, 10)))
+        assert "タイムアウトしました" in str(exc_info.value)
+
+    @patch('src.ocr_processor._HAS_GOOGLE_VISION', True)
+    def test_unexpected_error(self):
+        import src.ocr_processor as ocr_mod
+        processor = OCRProcessor.__new__(OCRProcessor)
+        processor.client = Mock()
+        processor.timeout = 30
+        processor.prompt_builder = None
+        processor.client.document_text_detection.side_effect = RuntimeError("boom")
+
+        with pytest.raises(ocr_mod.OCRError) as exc_info:
+            processor.perform_ocr_on_image(Image.new('RGB', (10, 10)))
+        assert "OCR処理に失敗しました" in str(exc_info.value)
+
+
+class TestOCRProcessorPostProcess:
+    """Test post_process_text with prompt_builder (handler pathway)"""
+
+    @patch('src.ocr_processor._HAS_GOOGLE_VISION', True)
+    def test_post_process_with_builder(self):
+        processor = OCRProcessor.__new__(OCRProcessor)
+        processor.prompt_builder = Mock()
+
+        result = processor.post_process_text("手順 ①：ボタンを押す ※注記")
+        assert isinstance(result, str)
+
+    @patch('src.ocr_processor._HAS_GOOGLE_VISION', True)
+    def test_extract_text_with_builder(self):
+        processor = OCRProcessor.__new__(OCRProcessor)
+        processor.client = Mock()
+        processor.prompt_builder = Mock()
+
+        ocr_result = OCRResult(text="raw テキスト", confidence=0.9, page_number=1, bounding_boxes=[])
+        with patch.object(processor, 'perform_ocr_on_image', return_value=ocr_result):
+            result = processor.extract_text(Mock())
+        assert isinstance(result, str)
+
+
+class TestOCRProcessorProcessPdfPages:
+    """Test OCRProcessor.process_pdf_pages method"""
+
+    @patch('src.ocr_processor._HAS_GOOGLE_VISION', True)
+    def test_success_multiple_pages(self):
+        processor = OCRProcessor.__new__(OCRProcessor)
+        processor.prompt_builder = None
+
+        def fake_ocr(image, language_hints=None):
+            return OCRResult(text="page", confidence=0.9, page_number=1, bounding_boxes=[])
+
+        with patch.object(processor, 'perform_ocr_on_image', side_effect=fake_ocr):
+            results = processor.process_pdf_pages([Mock(), Mock(), Mock()])
+
+        assert len(results) == 3
+        assert [r.page_number for r in results] == [1, 2, 3]
+        for r in results:
+            assert r.has_error is False
+
+    @patch('src.ocr_processor._HAS_GOOGLE_VISION', True)
+    def test_progress_callback_called(self):
+        processor = OCRProcessor.__new__(OCRProcessor)
+        processor.prompt_builder = None
+
+        progress_calls = []
+
+        def fake_ocr(image, language_hints=None):
+            return OCRResult(text="x", confidence=0.9, page_number=1, bounding_boxes=[])
+
+        with patch.object(processor, 'perform_ocr_on_image', side_effect=fake_ocr):
+            processor.process_pdf_pages(
+                [Mock(), Mock()],
+                progress_callback=lambda current, total: progress_calls.append((current, total))
+            )
+
+        assert progress_calls == [(1, 2), (2, 2)]
+
+    @patch('src.ocr_processor._HAS_GOOGLE_VISION', True)
+    def test_progress_callback_error_swallowed(self, caplog):
+        import logging
+        processor = OCRProcessor.__new__(OCRProcessor)
+        processor.prompt_builder = None
+
+        def bad_callback(current, total):
+            raise RuntimeError("callback failed")
+
+        def fake_ocr(image, language_hints=None):
+            return OCRResult(text="x", confidence=0.9, page_number=1, bounding_boxes=[])
+
+        with caplog.at_level(logging.WARNING):
+            with patch.object(processor, 'perform_ocr_on_image', side_effect=fake_ocr):
+                results = processor.process_pdf_pages([Mock()], progress_callback=bad_callback)
+
+        assert len(results) == 1
+        assert any("進捗コールバックエラー" in r.message for r in caplog.records)
+
+    @patch('src.ocr_processor._HAS_GOOGLE_VISION', True)
+    def test_page_failure_recorded_as_error_result(self):
+        import src.ocr_processor as ocr_mod
+        processor = OCRProcessor.__new__(OCRProcessor)
+        processor.prompt_builder = None
+
+        calls = {"n": 0}
+
+        def fake_ocr(image, language_hints=None):
+            calls["n"] += 1
+            if calls["n"] == 1:
+                raise ocr_mod.OCRError("page 1 failed")
+            return OCRResult(text="ok", confidence=0.9, page_number=1, bounding_boxes=[])
+
+        with patch.object(processor, 'perform_ocr_on_image', side_effect=fake_ocr):
+            results = processor.process_pdf_pages([Mock(), Mock()])
+
+        assert len(results) == 2
+        assert results[0].has_error is True
+        assert "page 1 failed" in results[0].error_message
+        assert results[0].page_number == 1
+        assert results[1].has_error is False
+        assert results[1].page_number == 2
+
+    @patch('src.ocr_processor._HAS_GOOGLE_VISION', True)
+    def test_cancel_token_stops_processing(self):
+        class CancelToken:
+            def __init__(self, cancel_on_page):
+                self.cancel_on_page = cancel_on_page
+                self.calls = 0
+
+            def throw_if_cancelled(self):
+                self.calls += 1
+                if self.calls >= self.cancel_on_page:
+                    raise RuntimeError("cancelled")
+
+        processor = OCRProcessor.__new__(OCRProcessor)
+        processor.prompt_builder = None
+
+        token = CancelToken(cancel_on_page=2)
+
+        def fake_ocr(image, language_hints=None):
+            return OCRResult(text="x", confidence=0.9, page_number=1, bounding_boxes=[])
+
+        with patch.object(processor, 'perform_ocr_on_image', side_effect=fake_ocr):
+            with pytest.raises(RuntimeError, match="cancelled"):
+                processor.process_pdf_pages([Mock(), Mock(), Mock()], cancel_token=token)
+
+        assert token.calls == 2
+
+    @patch('src.ocr_processor._HAS_GOOGLE_VISION', True)
+    def test_cancel_token_without_method_ignored(self):
+        processor = OCRProcessor.__new__(OCRProcessor)
+        processor.prompt_builder = None
+
+        def fake_ocr(image, language_hints=None):
+            return OCRResult(text="x", confidence=0.9, page_number=1, bounding_boxes=[])
+
+        with patch.object(processor, 'perform_ocr_on_image', side_effect=fake_ocr):
+            results = processor.process_pdf_pages([Mock()], cancel_token=object())
+
+        assert len(results) == 1
+
+
+class TestOCRProcessorInitEdgeCases:
+    """Test __init__ edge cases"""
+
+    @patch('src.ocr_processor._HAS_GOOGLE_VISION', True)
+    @patch('src.ocr_processor.vision.ImageAnnotatorClient')
+    def test_init_with_credentials_path_sets_env(self, mock_client):
+        with patch.dict('os.environ', {}, clear=True):
+            OCRProcessor(credentials_path="/custom/path.json")
+            import os
+            assert os.environ["GOOGLE_APPLICATION_CREDENTIALS"] == "/custom/path.json"
+
+    @patch('src.ocr_processor._HAS_GOOGLE_VISION', True)
+    @patch('src.ocr_processor.vision.ImageAnnotatorClient')
+    def test_init_with_gemini_api_key_env(self, mock_client):
+        with patch.dict('os.environ', {'GEMINI_API_KEY': 'gemini_key'}, clear=True):
+            processor = OCRProcessor()
+            assert processor.client is not None
+
+    @patch('src.ocr_processor._HAS_GOOGLE_VISION', True)
+    @patch('src.ocr_processor.vision.ImageAnnotatorClient')
+    def test_init_with_prompt_builder_and_project(self, mock_client):
+        builder = Mock()
+        processor = OCRProcessor(project_id="my-project", prompt_builder=builder)
+        assert processor.project_id == "my-project"
+        assert processor.prompt_builder is builder
+
+
+class TestModuleImportFallback:
+    """Test module-level ImportError fallback (lines 15-20)"""
+
+    def test_google_vision_import_fallback(self):
+        import importlib
+        import sys
+        import src.ocr_processor as ocr_mod
+
+        saved = {name: mod for name, mod in sys.modules.items()
+                 if name == "google" or name.startswith("google.")}
+        for name in saved:
+            del sys.modules[name]
+        sys.modules["google"] = None  # force ImportError on 'from google.cloud import ...'
+        try:
+            importlib.reload(ocr_mod)
+            assert ocr_mod._HAS_GOOGLE_VISION is False
+            assert ocr_mod.vision is None
+            assert ocr_mod.GoogleAPICallError is Exception
+            assert ocr_mod.RetryError is Exception
+            assert ocr_mod.DeadlineExceeded is Exception
+        finally:
+            del sys.modules["google"]
+            sys.modules.update(saved)
+            importlib.reload(ocr_mod)

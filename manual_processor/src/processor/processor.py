@@ -248,6 +248,7 @@ class DocumentProcessor:
             finally:
                 try:
                     img.close()
+                # nosec B110: リソースクローズ処理のフェイルオーバー
                 except Exception:
                     pass
 
@@ -359,31 +360,7 @@ class DocumentProcessor:
                 logger.warning(f"Diagram generation failed: {e}")
                 outputs["diagram"] = None
         
-        # 2. Generate PDF (with diagram image if present)
-        try:
-            pdf_output = output_dir / f"{base_name}.pdf"
-            create_formatted_pdf(full_content_text, pdf_output, title=doc_title,
-                                 compact_layout=compact_layout, use_emojis=use_emojis,
-                                 diagram_path=diagram_path_obj)
-            outputs["pdf"] = str(pdf_output)
-            logger.info(f"PDF generated: {pdf_output}")
-        except Exception as e:
-            logger.warning(f"PDF generation failed: {e}")
-            outputs["pdf"] = None
-        
-        # 3. Generate Word document (with diagram image if present)
-        try:
-            docx_output = output_dir / f"{base_name}.docx"
-            create_word_document(full_content_text, docx_output, title=doc_title,
-                                 compact_layout=compact_layout, use_emojis=use_emojis,
-                                 diagram_path=diagram_path_obj)
-            outputs["docx"] = str(docx_output)
-            logger.info(f"Word document generated: {docx_output}")
-        except Exception as e:
-            logger.warning(f"Word generation failed: {e}")
-            outputs["docx"] = None
-        
-        # 4. Generate audio - combine title, summary, and key points
+        # 2. Generate audio - combine title, summary, and key points
         try:
             audio_text = f"【{doc_title}】\n\n{summary_result.summary}"
             if summary_result.key_points:

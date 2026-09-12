@@ -442,6 +442,7 @@ async def save_mermaid_and_rebuild(file_id: str, req: MermaidRenderRequest) -> D
     diagram_gen = DiagramGenerator(api_key=config.gemini_api_key)
 
     try:
+        rendered_path = None
         # 設定に応じて PNG 画像を生成
         if config.generate_diagram_png and diagram_path:
             rendered_path = diagram_gen.render_to_image(

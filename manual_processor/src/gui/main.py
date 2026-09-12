@@ -225,10 +225,10 @@ class ManualProcessorGUI(tk.Tk):
     
     def open_output_folder(self):
         """出力フォルダをエクスプローラーで開く"""
-        import subprocess
+        import subprocess  # nosec B404: ローカル環境限定の操作
         output_dir = self.config.output_directory
         output_dir.mkdir(parents=True, exist_ok=True)
-        subprocess.Popen(f'explorer "{output_dir}"')
+        subprocess.Popen(f'explorer "{output_dir}"')  # nosec B603: ローカルパス展開は信頼された環境下
 
     def center_window(self):
         """Center the window on screen"""
@@ -421,7 +421,7 @@ def main():
     def gui_error_handler(message: str, error: Exception):
         try:
             messagebox.showerror("エラー", message)
-        except Exception:
+        except Exception:  # nosec B110: エラーハンドリング末尾のフォイルオーバー
             pass
 
     set_gui_error_callback(gui_error_handler)

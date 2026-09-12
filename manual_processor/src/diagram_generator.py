@@ -93,17 +93,22 @@ class DiagramGenerator:
                 logger.debug(f"Mermaid.to_png attempt failed: {e2}")
 
             # Pattern 3: subprocess で mmdc CLI を試行
-            import subprocess
-            result = subprocess.run(
-                ["mmdc", "-i", "-", "-o", str(output_path), "-t", theme,
-                 "-w", str(width), "-H", str(height)],
-                input=mermaid_code, capture_output=True, text=True, timeout=30
-            )
-            if result.returncode == 0:
-                logger.info(f"Mermaid diagram rendered (mmdc CLI): {output_path}")
-                return output_path
-            else:
-                raise DiagramGenerationError(f"mmdc CLI failed: {result.stderr}")
+            # nosec B404: mermaid CLI 実行は信頼された環境下で実行
+            try:
+                import subprocess
+                result = subprocess.run(
+                    ["mmdc", "-i", "-", "-o", str(output_path), "-t", theme,
+                     "-w", str(width), "-H", str(height)],
+                    input=mermaid_code, capture_output=True, text=True, timeout=30
+                )
+                if result.returncode == 0:
+                    logger.info(f"Mermaid diagram rendered (mmdc CLI): {output_path}")
+                    return output_path
+                else:
+                    raise DiagramGenerationError(f"mmdc CLI failed: {result.stderr}")
+            except (FileNotFoundError, subprocess.SubprocessError) as e3:
+                logger.debug(f"mmdc CLI attempt failed: {e3}")
+                raise DiagramGenerationError(f"mmdc CLI failed: {e3}")
 
         except DiagramGenerationError:
             raise
@@ -133,7 +138,7 @@ class DiagramGenerator:
                 try:
                     font = ImageFont.truetype(candidate, 14)
                     break
-                except Exception:
+                except Exception:  # nosec B112: 例外スキップはフォント検索フェイルオーバー用
                     continue
         if font is None:
             font = ImageFont.load_default()

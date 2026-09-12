@@ -3,6 +3,7 @@ Tests for configuration system.
 """
 
 import os
+import logging
 import tempfile
 import pytest
 from pathlib import Path
@@ -582,3 +583,167 @@ class TestAppConfigEnsureDirectories:
         assert output_dir.exists()
         assert temp_dir.exists()
         AppConfig._instance = None
+
+
+class TestLoaderEnvMapping:
+    """Test _env_to_settings_mapping() full coverage via load_settings()"""
+
+    ENV_VARS = {
+        "APP_DEBUG": "true",
+        "OUTPUT_DIRECTORY": "/tmp/out",
+        "TEMP_DIRECTORY": "/tmp/tmpdir",
+        "LOG_DIRECTORY": "/tmp/logs",
+        "OCR_PROVIDER": "gemini",
+        "OCR_BATCH_SIZE": "5",
+        "OCR_TIMEOUT": "60",
+        "GEMINI_MODEL": "gemini-pro-x",
+        "GEMINI_TEMPERATURE": "0.7",
+        "GEMINI_MAX_TOKENS": "2048",
+        "PROCESSOR_TYPE": "gemini",
+        "CHUNK_SIZE": "1500",
+        "WEB_HOST": "0.0.0.0",
+        "WEB_PORT": "8888",
+        "WEB_CORS_ORIGINS": "http://a.com, http://b.com",
+        "WEB_UPLOAD_MAX_MB": "100",
+        "PROMPT_LAYOUT": "vertical",
+        "PROMPT_STRICT_MODE": "yes",
+        "PROMPT_HAS_DIAGRAMS": "1",
+        "PROMPT_LOW_QUALITY_MODE": "true",
+        "PROMPT_DOMAIN_TERMS": "termA\n termB ,termC",
+        "PROMPT_CUSTOM_RULES": "rule1\nrule2",
+        "TTS_LANGUAGE": "en-US",
+        "TTS_VOICE": "en-US-Test",
+        "PII_MASKING_ENABLED": "true",
+        "AUDIT_ENABLED": "false",
+        "USB_AUTO_DETECT": "no",
+    }
+
+    def test_all_env_mappings(self, monkeypatch):
+        """All environment variable branches in _env_to_settings_mapping"""
+        for k, v in self.ENV_VARS.items():
+            monkeypatch.setenv(k, v)
+        settings = load_settings()
+        assert settings.app.debug is True
+        assert settings.paths.output_directory == "/tmp/out"
+        assert settings.paths.temp_directory == "/tmp/tmpdir"
+        assert settings.paths.log_directory == "/tmp/logs"
+        assert settings.ocr.provider == "gemini"
+        assert settings.ocr.batch_size == 5
+        assert settings.ocr.timeout_seconds == 60
+        assert settings.gemini.model == "gemini-pro-x"
+        assert settings.gemini.temperature == 0.7
+        assert settings.gemini.max_output_tokens == 2048
+        assert settings.processing.processor_type == "gemini"
+        assert settings.processing.chunk_size == 1500
+        assert settings.web.host == "0.0.0.0"
+        assert settings.web.port == 8888
+        assert settings.web.cors_origins == ["http://a.com", "http://b.com"]
+        assert settings.web.upload_max_mb == 100
+        assert settings.prompt.layout == "vertical"
+        assert settings.prompt.strict_mode is True
+        assert settings.prompt.has_diagrams is True
+        assert settings.prompt.low_quality_mode is True
+        assert settings.prompt.domain_terms == ["termA", "termB", "termC"]
+        assert settings.prompt.custom_rules == ["rule1", "rule2"]
+        assert settings.tts.language_code == "en-US"
+        assert settings.tts.voice_name == "en-US-Test"
+        assert settings.security.pii_masking.enabled is True
+        assert settings.security.audit.enabled is False
+        assert settings.usb.auto_detect is False
+
+    def test_empty_cors_origins_ignored(self, monkeypatch):
+        """WEB_CORS_ORIGINS with only whitespace should not override"""
+        monkeypatch.setenv("WEB_CORS_ORIGINS", " , ")
+        settings = load_settings()
+        assert settings.web.cors_origins == [
+            "http://localhost:3000",
+            "http://localhost:8000",
+        ]
+
+    def test_empty_domain_terms_ignored(self, monkeypatch):
+        """PROMPT_DOMAIN_TERMS with only whitespace should not override"""
+        monkeypatch.setenv("PROMPT_DOMAIN_TERMS", "\n, ,\n")
+        settings = load_settings()
+        assert settings.prompt.domain_terms == []
+
+    def test_empty_custom_rules_ignored(self, monkeypatch):
+        """PROMPT_CUSTOM_RULES with only whitespace should not override"""
+        monkeypatch.setenv("PROMPT_CUSTOM_RULES", "\n\n")
+        settings = load_settings()
+        assert settings.prompt.custom_rules == []
+
+
+class TestLoaderYamlEdgeCases:
+    """Test _load_yaml_file and load_settings YAML edge cases"""
+
+    def test_load_nonexistent_yaml_returns_none(self, tmp_path):
+        """_load_yaml_file returns None when file doesn't exist"""
+        from config.loader import _load_yaml_file
+        assert _load_yaml_file(tmp_path / "missing.yaml") is None
+
+    def test_load_invalid_yaml_returns_none(self, tmp_path, caplog):
+        """_load_yaml_file returns None and logs warning on invalid YAML"""
+        from config.loader import _load_yaml_file
+        bad = tmp_path / "bad.yaml"
+        bad.write_text("key: [unclosed")
+        with caplog.at_level(logging.WARNING):
+            result = _load_yaml_file(bad)
+        assert result is None
+        assert any("Failed to load config" in r.message for r in caplog.records)
+
+    def test_load_empty_yaml_returns_empty_dict(self, tmp_path):
+        """Empty YAML file results in empty dict (yaml.safe_load falsy)"""
+        from config.loader import _load_yaml_file
+        empty = tmp_path / "empty.yaml"
+        empty.write_text("")
+        assert _load_yaml_file(empty) == {}
+
+    def test_load_settings_search_path_hit(self, tmp_path, caplog, monkeypatch):
+        """load_settings() without explicit path loads from search path and logs info"""
+        cfg_dir = tmp_path / "cfg"
+        cfg_dir.mkdir()
+        cfg_file = cfg_dir / "config.yaml"
+        cfg_file.write_text("app:\n  name: search-path-app\n")
+        monkeypatch.setenv("MANUAL_PROCESSOR_CONFIG", str(cfg_file))
+        # Clear cached search paths so env var takes effect
+        import config.loader as loader_mod
+        original_paths = loader_mod.CONFIG_SEARCH_PATHS
+        loader_mod.CONFIG_SEARCH_PATHS = [Path(str(cfg_file))]
+        try:
+            with caplog.at_level(logging.INFO):
+                settings = load_settings()
+            assert settings.app.name == "search-path-app"
+            assert any("Loaded config from" in r.message for r in caplog.records)
+        finally:
+            loader_mod.CONFIG_SEARCH_PATHS = original_paths
+
+    def test_load_settings_validation_error(self, monkeypatch, caplog):
+        """load_settings() raises ValidationError on invalid config values"""
+        monkeypatch.setenv("WEB_PORT", "99999")
+        with caplog.at_level(logging.ERROR):
+            with pytest.raises(Exception):
+                load_settings()
+        assert any("Configuration validation failed" in r.message for r in caplog.records)
+
+    def test_find_config_file_returns_existing(self, tmp_path, monkeypatch):
+        """find_config_file() returns path when a search path exists"""
+        cfg_file = tmp_path / "config.yaml"
+        cfg_file.write_text("app:\n  name: x\n")
+        import config.loader as loader_mod
+        original_paths = loader_mod.CONFIG_SEARCH_PATHS
+        loader_mod.CONFIG_SEARCH_PATHS = [Path(str(cfg_file))]
+        try:
+            result = find_config_file()
+            assert result == cfg_file
+        finally:
+            loader_mod.CONFIG_SEARCH_PATHS = original_paths
+
+    def test_find_config_file_returns_none(self, tmp_path, monkeypatch):
+        """find_config_file() returns None when no search path exists"""
+        import config.loader as loader_mod
+        original_paths = loader_mod.CONFIG_SEARCH_PATHS
+        loader_mod.CONFIG_SEARCH_PATHS = [tmp_path / "nope.yaml"]
+        try:
+            assert find_config_file() is None
+        finally:
+            loader_mod.CONFIG_SEARCH_PATHS = original_paths

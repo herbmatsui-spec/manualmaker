@@ -218,6 +218,33 @@ class SecurityManager:
             return None
 
     @classmethod
+    def _get_or_create_fernet(cls) -> Optional[Fernet]:
+        """Get Fernet instance (key is cached after first call)"""
+        if not hasattr(cls, '_fernet_cache'):
+            cls._fernet_cache = None
+
+        if cls._fernet_cache is not None:
+            return cls._fernet_cache
+
+        if not _HAS_CRYPTO:
+            return None
+
+        key = cls._get_encryption_key()
+        if not key:
+            return None
+
+        try:
+            # key が 32 バイト未満の場合は新規生成、それ以上は既存 key を使用
+            if len(key) < 32:
+                cls._fernet_cache = Fernet(Fernet.generate_key())
+            else:
+                cls._fernet_cache = Fernet(key)
+            return cls._fernet_cache
+        except Exception:
+            cls._fernet_cache = None
+            return None
+
+    @classmethod
     def encrypt_data(cls, data: bytes) -> Tuple[bytes, bool]:
         """
         Encrypt data using Fernet symmetric encryption
@@ -228,13 +255,12 @@ class SecurityManager:
             logger.warning("cryptography library not available")
             return data, False
 
-        key = cls._get_encryption_key()
-        if not key:
-            logger.warning("ENCRYPTION_KEY not set")
+        f = cls._get_or_create_fernet()
+        if not f:
+            logger.warning("Fernet key not available")
             return data, False
 
         try:
-            f = Fernet(Fernet.generate_key() if len(key) < 32 else key)
             encrypted = f.encrypt(data)
             return encrypted, True
         except Exception as e:
@@ -252,13 +278,12 @@ class SecurityManager:
             logger.warning("cryptography library not available")
             return encrypted_data, False
 
-        key = cls._get_encryption_key()
-        if not key:
-            logger.warning("ENCRYPTION_KEY not set")
+        f = cls._get_or_create_fernet()
+        if not f:
+            logger.warning("Fernet key not available")
             return encrypted_data, False
 
         try:
-            f = Fernet(Fernet.generate_key() if len(key) < 32 else key)
             decrypted = f.decrypt(encrypted_data)
             return decrypted, True
         except Exception as e:

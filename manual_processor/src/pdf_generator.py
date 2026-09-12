@@ -10,6 +10,7 @@ from typing import Optional, Dict, Any, Tuple
 
 try:
     from fpdf import FPDF
+    from fpdf.enums import XPos, YPos
 except ImportError:
     FPDF = None
 
@@ -130,7 +131,7 @@ class PDFGenerator:
         try:
             pdf.add_page()
             pdf.set_font(font_name, "B", 14)
-            pdf.cell(0, 10, f"📊 {caption}", ln=True, align="C")
+            pdf.cell(0, 10, f"📊 {caption}", new_x=XPos.LMARGIN, new_y=YPos.NEXT, align="C")
             pdf.ln(5)
 
             page_width = pdf.w - pdf.l_margin - pdf.r_margin
@@ -151,10 +152,10 @@ class PDFGenerator:
             pdf.ln(4)
             if font_name != "Helvetica":
                 pdf.set_font(font_name, "", 10)
-                pdf.cell(0, 6, caption, ln=True, align="C")
+                pdf.cell(0, 6, caption, new_x=XPos.LMARGIN, new_y=YPos.NEXT, align="C")
             else:
                 pdf.set_font("Helvetica", "", 10)
-                pdf.cell(0, 6, "[Scan QR code for audio playback]", ln=True, align="C")
+                pdf.cell(0, 6, "[Scan QR code for audio playback]", new_x=XPos.LMARGIN, new_y=YPos.NEXT, align="C")
             pdf.ln(2)
 
             page_width = pdf.w - pdf.l_margin - pdf.r_margin
@@ -252,7 +253,7 @@ class PDFGenerator:
         use_emojis_flag = t.get("emoji_enabled", use_emojis)
         display_title = f"📄 {title}" if use_emojis_flag else title
         pdf.set_font(font_name, "B" if jp_font_path else "", t.get("title_font_size", 20))
-        pdf.cell(0, (10 if t.get("compact_mode") else 15), display_title, ln=True, align="C")
+        pdf.cell(0, (10 if t.get("compact_mode") else 15), display_title, new_x=XPos.LMARGIN, new_y=YPos.NEXT, align="C")
         pdf.ln((6 if t.get("compact_mode") else 10))
 
         # Insert QR code on title page if present
@@ -273,7 +274,7 @@ class PDFGenerator:
                 if use_emojis_flag:
                     header_text = f"📌 {header_text}"
                 pdf.set_font(font_name, "B" if jp_font_path else "", t.get("header_font_size", 14))
-                pdf.cell(0, header_line_height, header_text, ln=True)
+                pdf.cell(0, header_line_height, header_text, new_x=XPos.LMARGIN, new_y=YPos.NEXT)
                 pdf.set_font(font_name, size=t.get("font_size", 11))
                 pdf.ln(header_space_after)
             elif line.strip().startswith('- ') or line.strip().startswith('• '):

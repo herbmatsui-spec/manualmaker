@@ -381,3 +381,218 @@ class TestGoogleDriveManagerUpload:
             assert "parents" not in call_args[1]["body"]
 
         creds_path.unlink()
+
+
+def _make_manager(tmp_path):
+    """Helper: create manager with a temporary credentials file"""
+    creds_file = tmp_path / "creds.json"
+    creds_file.write_text('{"installed": {"client_id": "test"}}')
+    return GoogleDriveManager(credentials_path=creds_file)
+
+
+class TestGoogleDriveManagerErrorPaths:
+    """Test exception wrapping in each method"""
+
+    def test_get_authorization_url_wraps_error(self, tmp_path):
+        manager = _make_manager(tmp_path)
+        with patch('google_auth_oauthlib.flow.Flow.from_client_secrets_file',
+                   side_effect=RuntimeError("bad secrets")):
+            with pytest.raises(GoogleDriveError, match="Failed to generate authorization URL"):
+                manager.get_authorization_url()
+
+    def test_exchange_code_requires_credentials(self, tmp_path):
+        manager = GoogleDriveManager(credentials_path=tmp_path / "missing.json")
+        with pytest.raises(GoogleDriveError, match="Credentials file not found"):
+            manager.exchange_code("code123")
+
+    def test_exchange_code_wraps_error(self, tmp_path):
+        manager = _make_manager(tmp_path)
+        with patch('google_auth_oauthlib.flow.Flow.from_client_secrets_file',
+                   side_effect=RuntimeError("flow failed")):
+            with pytest.raises(GoogleDriveError, match="Failed to exchange authorization code"):
+                manager.exchange_code("code123")
+
+    def test_load_credentials_no_refresh_token_raises(self, tmp_path):
+        manager = _make_manager(tmp_path)
+        with patch('src.google_drive_manager.get_api_key', return_value=None):
+            with pytest.raises(GoogleDriveError, match="Not authenticated"):
+                manager._load_credentials()
+
+    def test_load_credentials_invalid_json_raises(self, tmp_path):
+        manager = _make_manager(tmp_path)
+
+        def get_api_key_side_effect(service, username):
+            if username == "google_drive_refresh_token":
+                return "refresh_token_value"
+            return "{invalid json!!"
+
+        with patch('src.google_drive_manager.get_api_key', side_effect=get_api_key_side_effect):
+            with pytest.raises(GoogleDriveError, match="Failed to parse stored credentials"):
+                manager._load_credentials()
+
+    def test_load_credentials_without_stored_json(self, tmp_path):
+        manager = _make_manager(tmp_path)
+
+        def get_api_key_side_effect(service, username):
+            if username == "google_drive_refresh_token":
+                return "refresh_token_value"
+            return None
+
+        with patch('src.google_drive_manager.get_api_key', side_effect=get_api_key_side_effect):
+            creds = manager._load_credentials()
+        assert creds.refresh_token == "refresh_token_value"
+        assert manager._creds is creds
+
+    def test_load_credentials_refreshes_expired_token(self, tmp_path):
+        manager = _make_manager(tmp_path)
+
+        def get_api_key_side_effect(service, username):
+            if username == "google_drive_refresh_token":
+                return "refresh_token_value"
+            return json.dumps({
+                "token": "old_token",
+                "refresh_token": "refresh_token_value",
+                "token_uri": "https://oauth2.googleapis.com/token",
+                "client_id": "cid",
+                "client_secret": "csecret",
+                "scopes": ["https://www.googleapis.com/auth/drive.file"],
+            })
+
+        mock_creds = Mock()
+        mock_creds.expired = True
+        mock_creds.refresh_token = "refresh_token_value"
+        mock_creds.token = "new_token"
+        mock_creds.token_uri = "https://oauth2.googleapis.com/token"
+        mock_creds.client_id = "cid"
+        mock_creds.client_secret = "csecret"
+        mock_creds.scopes = ["https://www.googleapis.com/auth/drive.file"]
+
+        with patch('src.google_drive_manager.get_api_key', side_effect=get_api_key_side_effect), \
+             patch('google.oauth2.credentials.Credentials', return_value=mock_creds):
+            creds = manager._load_credentials()
+
+        mock_creds.refresh.assert_called_once()
+        assert creds.token == "new_token"
+        assert manager._creds is creds
+
+    def test_load_credentials_refresh_error_raises(self, tmp_path):
+        manager = _make_manager(tmp_path)
+
+        def get_api_key_side_effect(service, username):
+            if username == "google_drive_refresh_token":
+                return "refresh_token_value"
+            return json.dumps({"token": "t", "refresh_token": "refresh_token_value"})
+
+        mock_creds = Mock()
+        mock_creds.expired = True
+        mock_creds.refresh_token = "refresh_token_value"
+        mock_creds.refresh.side_effect = RuntimeError("refresh failed")
+
+        with patch('src.google_drive_manager.get_api_key', side_effect=get_api_key_side_effect), \
+             patch('google.oauth2.credentials.Credentials', return_value=mock_creds):
+            with pytest.raises(GoogleDriveError, match="Failed to refresh access token"):
+                manager._load_credentials()
+
+    def test_upload_file_wraps_error(self, tmp_path):
+        manager = _make_manager(tmp_path)
+        test_file = tmp_path / "doc.pdf"
+        test_file.write_bytes(b"pdf")
+
+        with patch('src.google_drive_manager.get_api_key', return_value=None), \
+             patch.object(GoogleDriveManager, '_get_drive_service',
+                          side_effect=RuntimeError("service down")):
+            with pytest.raises(GoogleDriveError, match="Failed to upload file to Google Drive"):
+                manager.upload_file(test_file)
+
+    def test_upload_file_reuses_google_drive_error(self, tmp_path):
+        manager = _make_manager(tmp_path)
+        test_file = tmp_path / "doc.pdf"
+        test_file.write_bytes(b"pdf")
+
+        original_error = GoogleDriveError("propagated")
+        with patch.object(GoogleDriveManager, '_get_drive_service', side_effect=original_error):
+            with pytest.raises(GoogleDriveError) as exc_info:
+                manager.upload_file(test_file)
+        assert exc_info.value is original_error
+
+    def test_set_public_read_wraps_error(self, tmp_path):
+        manager = _make_manager(tmp_path)
+
+        with patch.object(GoogleDriveManager, '_get_drive_service',
+                          side_effect=RuntimeError("perm failed")):
+            with pytest.raises(GoogleDriveError, match="Failed to set public read permission"):
+                manager.set_public_read("file_1")
+
+    def test_set_public_read_reuses_google_drive_error(self, tmp_path):
+        manager = _make_manager(tmp_path)
+
+        original_error = GoogleDriveError("propagated")
+        with patch.object(GoogleDriveManager, '_get_drive_service', side_effect=original_error):
+            with pytest.raises(GoogleDriveError) as exc_info:
+                manager.set_public_read("file_1")
+        assert exc_info.value is original_error
+
+    def test_create_folder_wraps_error(self, tmp_path):
+        manager = _make_manager(tmp_path)
+
+        with patch.object(GoogleDriveManager, '_get_drive_service',
+                          side_effect=RuntimeError("folder failed")):
+            with pytest.raises(GoogleDriveError, match="Failed to create folder"):
+                manager.create_folder("New Folder")
+
+    def test_create_folder_reuses_google_drive_error(self, tmp_path):
+        manager = _make_manager(tmp_path)
+
+        original_error = GoogleDriveError("propagated")
+        with patch.object(GoogleDriveManager, '_get_drive_service', side_effect=original_error):
+            with pytest.raises(GoogleDriveError) as exc_info:
+                manager.create_folder("New Folder")
+        assert exc_info.value is original_error
+
+    def test_revoke_authentication_exception_swallowed(self, tmp_path, caplog):
+        import logging
+        manager = _make_manager(tmp_path)
+
+        with patch('src.google_drive_manager.delete_api_key',
+                   side_effect=RuntimeError("keyring error")):
+            manager.revoke_authentication()  # should not raise
+
+        assert any("Failed to fully revoke" in r.message for r in caplog.records)
+
+
+class TestGoogleDriveModuleFallback:
+    """Test module-level ImportError fallback (lines 23-24, 41-42)"""
+
+    def test_import_fallback_flags(self):
+        # GOOGLE_API_AVAILABLE の現在値を検証（環境により True/False）
+        import src.google_drive_manager as gdm
+        assert isinstance(gdm.GOOGLE_API_AVAILABLE, bool)
+
+    def test_fallback_when_google_libs_missing(self):
+        import importlib
+        import sys
+        import src.google_drive_manager as gdm
+
+        # reload によりクラスオブジェクトの同一性が変わるため元の例外クラスを保存する
+        # （src.web.app など他モジュールが元のクラスを except 句で参照しているため）
+        original_error_cls = gdm.GoogleDriveError
+
+        google_mods = {name: mod for name, mod in sys.modules.items()
+                       if name == "google" or name.startswith("google.")
+                       or name.startswith("google_auth_oauthlib")
+                       or name.startswith("googleapiclient")}
+        for name in google_mods:
+            del sys.modules[name]
+        sys.modules["google"] = None
+        sys.modules["google_auth_oauthlib"] = None
+        sys.modules["googleapiclient"] = None
+        try:
+            importlib.reload(gdm)
+            assert gdm.GOOGLE_API_AVAILABLE is False
+        finally:
+            for name in ("google", "google_auth_oauthlib", "googleapiclient"):
+                del sys.modules[name]
+            sys.modules.update(google_mods)
+            importlib.reload(gdm)
+            # 例外クラスの同一性を復元（テスト順序依存の失敗を防ぐ）
+            gdm.GoogleDriveError = original_error_cls

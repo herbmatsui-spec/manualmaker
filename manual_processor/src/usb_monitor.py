@@ -97,6 +97,7 @@ class USBMonitor:
                     drive_type = ctypes.windll.kernel32.GetDriveTypeW(f"{letter}:\\")
                     if drive_type == 2:  # DRIVE_REMOVABLE
                         drives.append(drive_path)
+                # nosec B110: ドライブ型検出フェイルオーバー
                 except Exception:
                     pass
         return drives

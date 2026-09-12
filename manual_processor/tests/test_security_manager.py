@@ -150,6 +150,11 @@ class TestSecurityManagerAPIKey:
 class TestSecurityManagerEncryption:
     """Tests for encryption functions"""
 
+    def setup_method(self):
+        """_fernet_cache クラス属性の状態をリセット（テスト間の漏出を防ぐ）"""
+        from src.security_manager import SecurityManager
+        SecurityManager._fernet_cache = None
+
     def test_encrypt_no_crypto(self):
         from src.security_manager import SecurityManager
 
@@ -175,6 +180,8 @@ class TestSecurityManagerEncryption:
         with patch('src.security_manager._HAS_CRYPTO', True):
             with patch.dict('os.environ', {'ENCRYPTION_KEY': 'test-encryption-key-32bytes!!!'}):
                 with patch('src.security_manager.Fernet') as mock_fernet:
+                    # Clear the cache to ensure our mock is used
+                    SecurityManager._fernet_cache = None
                     mock_fernet_instance = MagicMock()
                     mock_fernet.return_value = mock_fernet_instance
                     mock_fernet_instance.encrypt.return_value = b"encrypted_data"
@@ -218,6 +225,8 @@ class TestSecurityManagerEncryption:
         with patch('src.security_manager._HAS_CRYPTO', True):
             with patch.dict('os.environ', {'ENCRYPTION_KEY': 'test-encryption-key-32bytes!!!'}):
                 with patch('src.security_manager.Fernet') as mock_fernet:
+                    # Clear the cache to ensure our mock is used
+                    SecurityManager._fernet_cache = None
                     mock_fernet_instance = MagicMock()
                     mock_fernet.return_value = mock_fernet_instance
                     mock_fernet_instance.decrypt.return_value = b"decrypted_data"

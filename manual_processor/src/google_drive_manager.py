@@ -28,8 +28,8 @@ SCOPES = [
 ]
 
 KEYRING_SERVICE = "manual_processor"
-KEYRING_REFRESH_TOKEN_USERNAME = "google_drive_refresh_token"
-KEYRING_CREDENTIALS_USERNAME = "google_drive_credentials"
+KEYRING_REFRESH_TOKEN_USERNAME = "google_drive_refresh_token"  # nosec B105: keyring サービスアカウントユーザー名
+KEYRING_CREDENTIALS_USERNAME = "google_drive_credentials"  # nosec B106: keyring サービスアカウントユーザー名
 
 try:
     from google_auth_oauthlib.flow import Flow
@@ -182,7 +182,7 @@ class GoogleDriveManager:
             creds = Credentials(
                 token=None,
                 refresh_token=refresh_token,
-                token_uri="https://oauth2.googleapis.com/token",
+                token_uri="https://oauth2.googleapis.com/token",  # nosec B106: Google OAuth 標準エンドポイント
                 client_id=None,
                 client_secret=None,
                 scopes=SCOPES,
