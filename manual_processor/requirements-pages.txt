@@ -1,0 +1,45 @@
+# Cloudflare Pages Functions compatible dependencies
+# Removed: pypdfium2, PyMuPDF, google-cloud-vision, pydub, watchdog, pyinstaller
+# Replaced with pure Python alternatives or Cloudflare bindings
+
+# Core
+pydantic>=2.5.0
+pydantic-settings>=2.1.0
+pyyaml>=6.0.1
+python-dotenv>=1.0.0
+
+# PDF processing (pure Python alternatives)
+pypdf>=4.0.0
+pdfplumber>=0.11.0
+fpdf2>=2.7.0
+python-docx>=1.1.0
+
+# Image processing
+pillow>=10.0.0
+
+# AI/ML
+google-genai>=0.8.0
+tenacity>=8.2.0
+
+# Web framework (Pages Functions uses native request/response)
+# fastapi not needed - Pages Functions uses native ASGI-like handlers
+# uvicorn not needed - runs on Cloudflare edge
+
+# Utilities
+aiofiles>=24.1.0
+websockets>=12.0
+keyring>=24.0.0
+edge-tts>=6.1.0
+gTTS>=2.5.0
+jinja2>=3.1.0
+python-multipart>=0.0.9
+
+# Observability
+prometheus-client>=0.19.0
+
+# Cloudflare bindings (installed via wrangler, not pip)
+# These are available at runtime in Pages Functions
+# import cloudflare.workers as workers
+# import cloudflare.r2 as r2
+# import cloudflare.d1 as d1
+# import cloudflare.queues as queues

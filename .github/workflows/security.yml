@@ -1,0 +1,121 @@
+name: Dependency & Security Updates
+
+on:
+  schedule:
+    - cron: '0 2 * * 1' # Weekly on Monday 2 AM UTC
+  workflow_dispatch:
+
+jobs:
+  dependabot:
+    name: Dependency Updates
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      pull-requests: write
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+          cache-dependency-path: manual_processor/workers/package-lock.json
+
+      - name: Update Worker dependencies
+        working-directory: manual_processor/workers
+        run: |
+          npm update --save
+          npm audit fix --force || true
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: 'pip'
+          cache-dependency-path: manual_processor/requirements-pages.txt
+
+      - name: Update Python dependencies
+        working-directory: manual_processor
+        run: |
+          pip install --upgrade pip
+          pip list --outdated --format=freeze | grep -v '^\-e' | cut -d = -f 1 | xargs -n1 pip install -U || true
+
+      - name: Create PR for dependency updates
+        uses: peter-evans/create-pull-request@v6
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          commit-message: 'chore: update dependencies'
+          title: 'chore: weekly dependency updates'
+          body: |
+            Automated weekly dependency updates for Worker (npm) and Pages Functions (pip).
+            
+            Please review the changes and ensure tests pass before merging.
+          branch: chore/weekly-dependency-updates
+          delete-branch: true
+
+  security-audit:
+    name: Security Audit
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+          cache-dependency-path: manual_processor/workers/package-lock.json
+
+      - name: npm audit
+        working-directory: manual_processor/workers
+        run: |
+          npm audit --audit-level=high || true
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: 'pip'
+          cache-dependency-path: manual_processor/requirements-pages.txt
+
+      - name: Install safety
+        run: pip install safety
+
+      - name: Python safety check
+        working-directory: manual_processor
+        run: |
+          safety check -r requirements-pages.txt || true
+
+      - name: Run bandit security linter
+        working-directory: manual_processor
+        run: |
+          pip install bandit
+          bandit -r functions/ -f json -o bandit-report.json || true
+          bandit -r src/ -f json -o bandit-report-src.json || true
+
+      - name: Upload bandit reports
+        uses: actions/upload-artifact@v4
+        with:
+          name: bandit-reports
+          path: manual_processor/bandit-report*.json
+          retention-days: 30
+
+  secret-scan:
+    name: Secret Scanning
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Run TruffleHog
+        uses: trufflesecurity/trufflehog@main
+        with:
+          path: ./
+          base: main
+          head: HEAD
+          extra_args: --only-verified --fail

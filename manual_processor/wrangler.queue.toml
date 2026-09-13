@@ -1,0 +1,52 @@
+# Cloudflare Python Worker for Queue Consumer
+# This runs the PDF processing queue consumer
+
+name = "manual-processor-queue"
+main = "functions/queue/pdf_processor.py"
+compatibility_date = "2024-09-13"
+compatibility_flags = ["python_workers"]
+
+# Build command for Python dependencies
+[build]
+command = "pip install -r manual_processor/requirements-pages.txt --target .python_packages"
+
+# Python worker configuration
+[build.upload]
+format = "modules"
+main = "./.python_packages/functions/queue/pdf_processor.py"
+
+# Bindings for queue consumer
+[[r2_buckets]]
+binding = "FILES"
+bucket_name = "manual-processor-files"
+preview_bucket_name = "manual-processor-files-preview"
+
+# Main queue consumer
+[[queues.consumers]]
+queue = "pdf-processing"
+max_batch_size = 10
+max_batch_timeout = 30
+max_retries = 3
+dead_letter_queue = "pdf-processing-dlq"
+
+# DLQ binding for sending failed messages
+[[queues.producers]]
+queue = "pdf-processing-dlq"
+binding = "PDF_DLQ"
+
+# Durable Object for progress tracking
+[[durable_objects.bindings]]
+name = "PROGRESS_DO"
+class_name = "ProgressDurableObject"
+
+# Environment variables
+[vars]
+ENVIRONMENT = "production"
+PYTHONPATH = ".:.python_packages:manual_processor"
+MAX_RETRIES = "3"
+RETRY_DELAYS = "1,5,30"
+
+# Secrets (set via wrangler secret put)
+# GOOGLE_API_KEY
+# GEMINI_API_KEY
+# ENCRYPTION_KEY

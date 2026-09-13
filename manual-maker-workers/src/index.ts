@@ -17,6 +17,8 @@ import { registerUploadRoutes } from './routes/upload';
 import { registerProcessRoutes } from './routes/process';
 import { registerResultsRoutes } from './routes/results';
 import { registerDownloadRoutes } from './routes/download';
+import { registerGeminiRoutes } from './routes/gemini';
+import { registerVisionRoutes } from './routes/vision';
 import { registerI18nRoutes } from './routes/i18n';
 import { registerSecurityRoutes } from './routes/security';
 import { registerMermaidRoutes } from './routes/mermaid';
@@ -28,9 +30,22 @@ registerUploadRoutes(app);
 registerProcessRoutes(app);
 registerResultsRoutes(app);
 registerDownloadRoutes(app);
+registerGeminiRoutes(app);
+registerVisionRoutes(app);
 registerI18nRoutes(app);
 registerSecurityRoutes(app);
 registerMermaidRoutes(app);
+
+// API 404 fallback
+app.notFound((c) => {
+  return c.json({ error: 'Not found' }, 404);
+});
+
+// Global error handler
+app.onError((err, c) => {
+  console.error('Unhandled error:', err);
+  return c.json({ error: 'Internal server error' }, 500);
+});
 
 // Export for Cloudflare Workers
 export default app;

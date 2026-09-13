@@ -1,0 +1,157 @@
+# Cloudflare Workers + Pages Configuration
+# Manual Processor - Handwritten Manual Processing System
+
+name = "manual-processor"
+compatibility_date = "2024-09-13"
+compatibility_flags = ["python_workers", "nodejs_compat"]
+
+# =============================================================================
+# PAGES FUNCTIONS CONFIGURATION (Main API)
+# =============================================================================
+
+[pages]
+# Pages Functions directory
+functions = "manual_processor/functions"
+
+# Build command for Python dependencies
+build_command = "pip install -r manual_processor/requirements-pages.txt --target .python_packages"
+
+# Output directory (for static assets if any)
+# output_dir = "dist"
+
+# =============================================================================
+# WORKERS CONFIGURATION (Edge Layer)
+# =============================================================================
+
+[build]
+# Workers build command (TypeScript)
+command = "npm run build:worker"
+
+[build.upload]
+format = "modules"
+main = "./workers/dist/index.js"
+
+# =============================================================================
+# BINDINGS
+# =============================================================================
+
+# R2 Bucket for file storage
+[[r2_buckets]]
+binding = "FILES"
+bucket_name = "manual-processor-files"
+preview_bucket_name = "manual-processor-files-preview"
+
+# Main Queue for async PDF processing
+[[queues.producers]]
+queue = "pdf-processing"
+binding = "PDF_QUEUE"
+
+[[queues.consumers]]
+queue = "pdf-processing"
+script = "manual-processor-queue"
+max_batch_size = 10
+max_batch_timeout = 30
+max_retries = 3
+dead_letter_queue = "pdf-processing-dlq"
+
+# Dead Letter Queue for failed messages
+[[queues.producers]]
+queue = "pdf-processing-dlq"
+binding = "PDF_DLQ"
+
+[[queues.consumers]]
+queue = "pdf-processing-dlq"
+script = "manual-processor-dlq-processor"
+max_batch_size = 10
+max_batch_timeout = 60
+max_retries = 0
+
+# Durable Object for WebSocket progress tracking
+[[durable_objects.bindings]]
+name = "PROGRESS_DO"
+class_name = "ProgressDurableObject"
+
+[[durable_objects.migrations]]
+tag = "v1"
+new_classes = ["ProgressDurableObject"]
+
+# D1 Database for metadata (optional)
+# [[d1_databases]]
+# binding = "DB"
+# database_name = "manual-processor-db"
+# database_id = "xxx"
+
+# KV for rate limiting (Edge Worker)
+[[kv_namespaces]]
+binding = "RATE_LIMIT_KV"
+id = "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+preview_id = "yyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyy"
+
+# Service binding to Pages Functions
+[[services]]
+binding = "PAGES_FUNCTIONS"
+service = "manual-processor-pages"
+
+# =============================================================================
+# ENVIRONMENT VARIABLES
+# =============================================================================
+
+[vars]
+ENVIRONMENT = "production"
+ALLOWED_ORIGINS = "https://manual-processor.pages.dev,http://localhost:8788,http://localhost:3000"
+BASE_URL = "https://manual-processor.pages.dev"
+R2_BUCKET_NAME = "manual-processor-files"
+R2_PUBLIC_URL = "https://pub-xxxxxxxx.r2.dev"
+
+# Queue settings
+MAX_RETRIES = "3"
+RETRY_DELAYS = "1,5,30"
+
+# Python-specific
+PYTHONPATH = ".:.python_packages"
+
+# =============================================================================
+# SECRETS (set via `wrangler secret put`)
+# =============================================================================
+# GOOGLE_API_KEY
+# GEMINI_API_KEY
+# ENCRYPTION_KEY
+# JWT_SECRET
+# R2_ACCESS_KEY_ID
+# R2_SECRET_ACCESS_KEY
+
+# =============================================================================
+# PYTHON WORKER CONFIG (for queue consumer)
+# =============================================================================
+
+# Queue consumer runs as a Python Worker
+# This is defined in a separate wrangler.toml or via the queue consumer config above
+
+# =============================================================================
+# LOCAL DEVELOPMENT
+# =============================================================================
+
+[local]
+# Local development settings
+persist_to = ".wrangler/state"
+
+[local.r2]
+bucket_name = "manual-processor-files-local"
+
+[local.queue]
+queue_name = "pdf-processing-local"
+
+[local.dlq]
+queue_name = "pdf-processing-dlq-local"
+
+# =============================================================================
+# DEPLOYMENT TARGETS
+# =============================================================================
+
+# Production deployment
+# wrangler pages deploy manual_processor --project-name=manual-processor
+# wrangler deploy --env production
+
+# Preview deployment
+# wrangler pages deploy manual_processor --project-name=manual-processor --branch=preview
+# wrangler deploy --env preview

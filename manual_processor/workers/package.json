@@ -1,0 +1,30 @@
+{
+  "name": "manual-processor-worker",
+  "version": "1.0.0",
+  "description": "Cloudflare Workers edge layer for Manual Processor",
+  "main": "dist/index.js",
+  "scripts": {
+    "build": "wrangler deploy --dry-run --outdir=dist",
+    "build:worker": "esbuild workers/index.ts --bundle --platform=neutral --target=es2022 --outfile=dist/index.js --format=esm --external:cloudflare:workers",
+    "dev": "wrangler dev",
+    "deploy": "wrangler deploy",
+    "deploy:preview": "wrangler deploy --env preview",
+    "typecheck": "tsc --noEmit",
+    "lint": "eslint workers/**/*.ts"
+  },
+  "dependencies": {
+    "hono": "^4.5.0",
+    "hono-rate-limiter": "^0.3.0"
+  },
+  "devDependencies": {
+    "@cloudflare/workers-types": "^4.20240903.0",
+    "@types/node": "^22.0.0",
+    "esbuild": "^0.23.0",
+    "typescript": "^5.5.0",
+    "wrangler": "^3.78.0"
+  },
+  "private": true,
+  "engines": {
+    "node": ">=20.0.0"
+  }
+}

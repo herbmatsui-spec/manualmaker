@@ -1,0 +1,45 @@
+# Cloudflare Pages Functions / Workers Local Development Variables
+# Copy this file to .dev.vars and fill in your values
+# DO NOT COMMIT THIS FILE WITH REAL VALUES
+
+# =============================================================================
+# REQUIRED - API Keys (get from Google Cloud Console / Google AI Studio)
+# =============================================================================
+GOOGLE_API_KEY="your-google-cloud-vision-api-key"
+GEMINI_API_KEY="your-gemini-api-key"
+
+# =============================================================================
+# OPTIONAL - Security
+# =============================================================================
+ENCRYPTION_KEY="your-32-byte-base64-encryption-key"
+JWT_SECRET="your-jwt-secret-key"
+
+# =============================================================================
+# OPTIONAL - Google Cloud (for Vision API)
+# =============================================================================
+GOOGLE_CLOUD_PROJECT_ID="your-gcp-project-id"
+GOOGLE_APPLICATION_CREDENTIALS="/path/to/service-account.json"
+
+# =============================================================================
+# OPTIONAL - R2 (for local development with MinIO/LocalStack)
+# =============================================================================
+R2_ENDPOINT_URL="http://localhost:9000"
+R2_ACCESS_KEY_ID="minioadmin"
+R2_SECRET_ACCESS_KEY="minioadmin"
+R2_BUCKET_NAME="manual-processor-files-local"
+R2_PUBLIC_URL="http://localhost:9000/manual-processor-files-local"
+
+# =============================================================================
+# OPTIONAL - Google Drive Integration
+# =============================================================================
+DRIVE_ENABLED="false"
+DRIVE_CREDENTIALS_PATH="/path/to/credentials.json"
+DRIVE_FOLDER_ID=""
+DRIVE_FOLDER_NAME="ManualMaker"
+
+# =============================================================================
+# ENVIRONMENT
+# =============================================================================
+ENVIRONMENT="development"
+ALLOWED_ORIGINS="http://localhost:3000,http://localhost:8000,http://localhost:8788"
+BASE_URL="http://localhost:8788"
