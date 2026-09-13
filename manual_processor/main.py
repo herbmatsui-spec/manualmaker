@@ -129,7 +129,7 @@ def main():
     
     # Handle version flag
     if args.version:
-        print("手書きマニュアル処理システム v1.0.0")
+        print("手書きマニュアル処理システム v3.1.0")
         print("Google AI Studio APIを使用しています")
         sys.exit(0)
     

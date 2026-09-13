@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "manual_processor"
-version = "3.0.0"
+version = "3.1.0"
 description = "手書きマニュアル自動整理システム - AI-powered OCR and document processing"
 readme = "README.md"
 license = {text = "MIT"}

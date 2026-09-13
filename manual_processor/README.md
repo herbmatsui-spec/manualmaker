@@ -1,4 +1,4 @@
-# 手書きマニュアル処理システム (Manual Processor) v3.0.0
+# 手書きマニュアル処理システム (Manual Processor) v3.1.0
 
 [![Python Version](https://img.shields.io/badge/python-3.8%2B-blue.svg)](https://www.python.org/)
 [![License](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)

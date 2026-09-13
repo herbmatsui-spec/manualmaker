@@ -1,17 +1,17 @@
-# 手書きマニュアル処理システム (Manual Processor) v2.4
+# 手書きマニュアル処理システム (Manual Processor) v3.1.0
 
 [![Python Version](https://img.shields.io/badge/python-3.8%2B-blue.svg)](https://www.python.org/)
 [![License](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
 [![Platform](https://img.shields.io/badge/platform-Windows%2010%2F11-win.svg)]()
-[![Tests](https://img.shields.io/badge/tests-1103%20passed-brightgreen.svg)]()
-[![Coverage](https://img.shields.io/badge/coverage-86%25-brightgreen.svg)]()
+[![Tests](https://img.shields.io/badge/tests-1325%20passed-brightgreen.svg)]()
+[![Coverage](https://img.shields.io/badge/coverage-90%25-brightgreen.svg)](https://codecov.io/)
 [![Status](https://img.shields.io/badge/status-production%20ready-brightgreen.svg)]()
 
 スキャンされた手書きマニュアル（PDF）を読み込み、**Google Gemini API** および **Google Cloud Vision API** を活用して高精度なOCR解析・初心者向けの要約および構造化を行い、**PDF**・**Word文書**・**音声ファイル(MP3/WAV)**・**フローチャート画像(PNG)** の複数フォーマットで自動出力するシステムです。
 
 ---
 
-## 🌟 主な機能 & 建築ハイライト
+## 🌟 主な機能 & アーキテクチャハイライト
 
 - 🌐 **Web ベースのモダン操作画面 (FastAPI + Web UI)**
   - ドラッグ＆ドロップによる PDF アップロード、リアルタイム進捗表示、成果物プレビュー。
@@ -23,13 +23,94 @@
   - Gemini API トラブル時のローカルプロセッサーフォールバックメカニズム (`ProcessorFactory`)。
 - 🔒 **セキュリティ & 個人情報自動マスキング**
   - 日本の電話番号・メールアドレス・郵便番号・クレジットカード番号・IPアドレス等の自動検出・マスキング (`SecurityManager`)。
+- ⚙️ **セキュリティ戦略パターン & 依存性注入 (v3.0 新機能)**
+  - `SecurityManager` が **依存性注入 (Dependency Injection)** に対応し、バックエンド戦略をランタイムで切り替え可能 (`SecurityConfig`)。
+  - **ローカル環境**: ハードコードパターン / 環境変数キーストア / 暗号化無効戦略
+  - **Cloudflare Workers環境**: KVストレージパターン / KVキーストア / Web Crypto API 暗号化
+  - `create_workers_config()` によるワンクリック Workers 対応設定生成
+  - ファイルシステム・keyring・cryptography ライブラリ非依存で Workers スタンドアロン実行可能
+- 🌐 **Cloudflare Workers スタンドアロンデプロイ対応 (v3.0 新機能)**
+  - `SecurityManager` が **Cloudflare Workers 環境でスタンドアロン動作** 可能に
+  - KV Namespace (`PII_PATTERNS`, `API_KEYS`) と Secret (`ENCRYPTION_KEY`) のみで運用可能
+  - `wrangler publish` だけでデプロイ完了、追加インフラ不要
 - 🚀 **性能最適化 & バッチ並列 OCR / キャッシュ管理**
   - メモリ (LRU Eviction) およびディスクベースの2層キャッシュ構造 (`CacheManager`)。
   - 大規模 PDF に対応した **バッチ並列 OCR & メモリ自動解放**（ページごとのリソース即時破棄）。
   - OCR 失敗ページのエラー状態トラッキング (`has_error`, `error_message`)。
 - 📦 **マルチフォーマット出力 & ドキュメント生成**
   - 余白調整・絵文字挿入・コンパクトレイアウト対応の PDF / Word ドキュメント生成。
+  - フローチャートは **Markdown (.md)** を標準出力し、**PNG** と **Mermaid (.mmd)** は設定で切替可能。エディタでの編集が容易。
   - Google Cloud TTS / edge-tts / gTTS による多層バックオフ音声合成。
+- ✍️ **手書きPDFプロンプトエンジン**
+  - 一字一句の書き起こし、判読不能文字、ルビ、ノイズ、縦書き・横書き、専門用語、図解、低品質画像に対応。
+  - 日本語・英語・中国語のプロンプト、環境変数による追加ルール、メモリ・ディスクキャッシュに対応。
+
+---
+
+## 🎬 デモ & クイックスタート
+
+### Web UI での処理フロー（推奨）
+
+```bash
+# 1. 依存関係インストール
+pip install -r manual_processor/requirements.txt
+
+# 2. 環境変数設定 (.env)
+echo "GEMINI_API_KEY=your_api_key" > manual_processor/.env
+echo "GOOGLE_API_KEY=your_api_key" >> manual_processor/.env
+
+# 3. Web サーバー起動
+cd manual_processor
+python -m uvicorn src.web.app:app --reload --host 127.0.0.1 --port 8000
+```
+
+ブラウザで **http://localhost:8000** にアクセス
+
+| ステップ | 操作 | 画面イメージ |
+|----------|------|--------------|
+| 1. アップロード | PDFをドラッグ＆ドロップ | 📤 ドロップゾーンにファイルを配置 |
+| 2. オプション選択 | コンパクト/絵文字/厳格モード等 | ⚙️ チェックボックスで切替 |
+| 3. AI処理実行 | 「AI パイプライン処理開始」クリック | ⚡ リアルタイム進捗バー表示 |
+| 4. 結果確認 | タブで要約/フローチャート/ダウンロード | 📄📊💾 3タブで成果物確認 |
+| 5. 編集・再生成 | Mermaidコード編集→プレビュー→保存 | ✏️ リアルタイムプレビュー更新 |
+
+### CLI での単発処理
+
+```bash
+cd manual_processor
+
+# 単一ファイル処理
+python main.py --cli --input path/to/manual.pdf --output ./output
+
+# バッチ処理（複数ファイル・ディレクトリ指定可）
+python main.py --cli --input "file1.pdf,file2.pdf,./manuals/" --compact-layout --use-emojis
+
+# ファイル監視モード（フォルダ監視・自動処理）
+python main.py --cli
+```
+
+**出力例:**
+```
+--- 全 3 件のPDFファイルの処理を開始します ---
+[1/3] 処理中: manual_001.pdf...
+  ✅ 処理完了
+    PDF: output/manual_001_formatted.pdf
+    DOCX: output/manual_001.docx
+    AUDIO: output/manual_001_audio.mp3
+    DIAGRAM: output/diagram_abc123.md
+[2/3] 処理中: manual_002.pdf...
+  ✅ 処理完了
+    ...
+✅ バッチ処理終了: 3 / 3 件成功
+```
+
+### GUI モード（デスクトップアプリ）
+
+```bash
+cd manual_processor
+python main.py          # GUI起動（デフォルト）
+python main.py --gui    # 明示的指定
+```
 
 ---
 
@@ -60,10 +141,16 @@ manual_processor/
 │   ├── i18n_manager.py      # 多言語対応 (i18n)
 │   ├── processor/           # プロセッサーファクトリー & ハイブリッド切り替え
 │   ├── gui/                 # デスクトップ GUI モジュール
-│   └── web/                 # FastAPI Web UI バックエンド & フロントエンド
-├── tests/                   # pytest テストスイート (全1103件)
+│   ├── web/                 # FastAPI Web UI バックエンド & フロントエンド
+│   └── security/            # セキュリティ戦略パターン実装 (v3.0+)
+│       ├── interfaces.py    # PatternProvider/KeyStore/EncryptionProvider プロトコル
+│       ├── strategies.py    # ハードコード/環境変数/無効化戦略
+│       ├── strategies_workers.py # Cloudflare Workers用戦略 (KV/Web Crypto)
+│       └── config.py        # SecurityConfig DI 設定クラス
+├── tests/                   # pytest テストスイート (1325件)
 ├── scripts/                 # スタンドアロン exe ビルドスクリプト等
 ├── main.py                  # アプリケーション共通エントリーポイント
+├── pyproject.toml           # パッケージメタデータ・依存関係
 └── requirements.txt         # 依存ライブラリ一覧
 ```
 
@@ -75,7 +162,7 @@ manual_processor/
 - **Python**: Python 3.8 以上 (Python 3.14 で動作検証済み)
 - **メモリ**: 最小 4GB（推奨 8GB以上）
 - **API Key**: [Google AI Studio](https://aistudio.google.com/) で取得した API キー
-- **依存ライブラリ**: requirements.txt を参照
+- **依存ライブラリ**: `requirements.txt` を参照
 
 ---
 
@@ -83,14 +170,25 @@ manual_processor/
 
 ### 1. 依存ライブラリのインストール
 ```bash
+cd manual_processor
 pip install -r requirements.txt
 ```
 
 ### 2. 環境変数の設定 (`.env`)
-プロジェクトルートに `.env` ファイルを作成し、APIキー等を設定します：
+プロジェクトルート (`manual_processor/`) に `.env` ファイルを作成し、APIキー等を設定します：
 ```env
 GEMINI_API_KEY=your_gemini_api_key_here
 GOOGLE_API_KEY=your_google_api_key_here
+
+# 手書きPDFプロンプト設定（任意）
+APP_LANGUAGE=ja
+PROMPT_LAYOUT=horizontal
+PROMPT_DOMAIN_TERMS=用語A,用語B
+PROMPT_HAS_DIAGRAMS=False
+PROMPT_LOW_QUALITY_MODE=False
+PROMPT_STRICT_MODE=True
+# 追加ルールは改行区切り
+PROMPT_CUSTOM_RULES=
 ```
 
 ### 3. Web UI モードで起動（推奨）
@@ -119,17 +217,131 @@ python scripts/build_exe.py
 
 ---
 
-## 🧪 テストの実行
+## 🔒 セキュリティ & 個人情報自動マスキング (v3.0 強化)
 
-全 1103 件のユニットテスト・統合テストを実行します：
+- 日本の電話番号・メールアドレス・郵便番号・クレジットカード番号・IPアドレス等の自動検出・マスキング (`SecurityManager`)。
+
+### SecurityManager 設定駆動アーキテクチャ (v3.0+)
+
+v3.0 より `SecurityManager` は **依存性注入 (Dependency Injection)** に完全対応しました。`SecurityConfig` を通じてバックエンド戦略をランタイムで切り替え可能です。
+
+#### 基本的な使用方法 (ローカル環境)
+
+```python
+from src.security.config import SecurityConfig
+from src.security.strategies import HardcodedPatternProvider, EnvVarKeyStore, NoOpEncryption
+from src.security_manager import SecurityManager
+
+# カスタム設定を作成
+config = SecurityConfig(
+    pattern_provider=HardcodedPatternProvider(),  # ハードコード済みPIIパターン
+    key_store=EnvVarKeyStore(),                    # 環境変数ベースのAPIキー保存
+    encryption_provider=NoOpEncryption()           # 暗号化なし（開発・テスト用）
+)
+
+# SecurityManager で使用
+masked, info = SecurityManager.mask_sensitive_data(
+    "連絡先: test@example.com",
+    config=config
+)
+print(masked)  # "連絡先: [REDACTED_EMAIL]"
+print(info["counts"])  # {"EMAIL": 1}
+```
+
+#### Cloudflare Workers 環境での使用
+
+```python
+from src.security.config import SecurityConfig
+from src.security.strategies_workers import create_workers_config
+from src.security_manager import SecurityManager
+
+# Workers環境用設定（KVストレージ自動検出）
+config = create_workers_config()
+
+# 通常通り使用
+masked, info = SecurityManager.mask_sensitive_data(
+    "連絡先: test@example.com",
+    config=config
+)
+```
+
+#### カスタムパターンプロバイダーの実装
+
+```python
+from src.security.interfaces import PatternProvider
+from src.security.config import SecurityConfig
+from src.security.strategies import EnvVarKeyStore, NoOpEncryption
+from src.security_manager import SecurityManager
+
+class CustomPatternProvider(PatternProvider):
+    def load_patterns(self):
+        return [
+            ("CUSTOM_ID", r"ID-\d{6}", "[REDACTED_ID]"),
+            ("INTERNAL_CODE", r"INT-[A-Z]{3}", "[REDACTED_CODE]"),
+        ]
+
+config = SecurityConfig(
+    pattern_provider=CustomPatternProvider(),
+    key_store=EnvVarKeyStore(),
+    encryption_provider=NoOpEncryption()
+)
+
+masked, info = SecurityManager.mask_sensitive_data(
+    "User ID-123456 with code INT-ABC",
+    config=config
+)
+# "User [REDACTED_ID] with code [REDACTED_CODE]"
+```
+
+#### 後方互換性
+
+既存コードは変更不要です。`config` パラメータを渡さない場合、従来の動作（YAML設定ファイル、keyring、環境変数ベースの暗号化）がそのまま維持されます。
+
+```python
+# 既存コード（変更なしで動作）
+from src.security_manager import SecurityManager
+
+masked, info = SecurityManager.mask_sensitive_data("Email: test@example.com")
+# 従来通りYAMLパターンファイルから読み込み、keyringでAPIキー管理
+```
+
+#### Cloudflare Workers デプロイ手順
+
+```toml
+# wrangler.toml
+[[kv_namespaces]]
+binding = "PII_PATTERNS"
+id = "your-pii-patterns-kv-id"
+
+[[kv_namespaces]]
+binding = "API_KEYS" 
+id = "your-api-keys-kv-id"
+```
 
 ```bash
-python -m pytest manual_processor/tests/ -v
+# 暗号化キーの設定 (32バイトをBase64エンコード)
+wrangler secret put ENCRYPTION_KEY
+
+# デプロイ
+wrangler publish
 ```
+
+---
+
+## 🧪 テストの実行
+
+全1325件のユニットテスト・統合テストを実行します：
+
+```bash
+cd manual_processor
+python -m pytest tests/ -v
+```
+
+現在のテスト件数は **1325件** です。外部AI APIを使用するテストはモックで実行します。
 
 カバレッジ付きテスト実行：
 ```bash
-python -m pytest manual_processor/tests/ --cov=src --cov=config --cov-fail-under=85 --rootdir=manual_processor
+python -m pytest tests/ --cov=src --cov=config --cov-fail-under=90
 ```
 
 ---

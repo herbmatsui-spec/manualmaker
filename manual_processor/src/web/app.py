@@ -32,7 +32,7 @@ STATIC_DIR.mkdir(parents=True, exist_ok=True)
 
 app = FastAPI(
     title="手書きマニュアル処理システム Web API",
-    version="2.0.0",
+    version="3.1.0",
     description="スキャンした手書きマニュアルのOCR解析・AI要約・マルチフォーマット生成Webサーバー"
 )
 

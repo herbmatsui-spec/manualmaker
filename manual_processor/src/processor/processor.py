@@ -234,7 +234,7 @@ class DocumentProcessor:
 
         results = {}
         failed_pages = []
-        batch_size = 4
+        batch_size = self.config.ocr_batch_size
 
         def ocr_page(page_num, img):
             try:
@@ -257,7 +257,7 @@ class DocumentProcessor:
                 cancel_token.throw_if_cancelled()
 
             batch = [(start_idx + i, images[start_idx + i]) for i in range(min(batch_size, total_pages - start_idx))]
-            max_workers = min(len(batch), 4)
+            max_workers = min(len(batch), self.config.ocr_max_workers)
 
             with ThreadPoolExecutor(max_workers=max_workers) as executor:
                 futures = {executor.submit(ocr_page, pn, img): pn for pn, img in batch}
@@ -282,6 +282,19 @@ class DocumentProcessor:
 
         return "\n\n".join(text_parts)
     
+# Helper to run generation with consistent error handling
+    def _run_generation(self, outputs: dict, generator_fn, *args, output_key: str, **kwargs) -> Optional[str]:
+        """Run a generation function with consistent error handling"""
+        try:
+            result = generator_fn(*args, **kwargs)
+            outputs[output_key] = str(result)
+            logger.info(f"{output_key.upper()} generated: {result}")
+            return str(result)
+        except Exception as e:
+            outputs[output_key] = None
+            logger.warning(f"{output_key} generation failed: {e}")
+            return None
+
     def _generate_outputs(self, summary_result: GeminiResult, pdf_path: Path, compact_layout: bool = False, use_emojis: bool = False,
                           file_id: Optional[str] = None, base_url: str = "http://localhost:8000") -> Dict[str, str]:
         """Generate PDF, Word, audio, and flowchart diagram output files"""
@@ -323,8 +336,6 @@ class DocumentProcessor:
 
         # 1. Generate flowchart diagram FIRST
         diagram_path_obj = None
-        diagram_markdown_path = None
-        diagram_mermaid_path = None
         if self.config.generate_diagram:
             try:
                 diagram_output = output_dir / f"{base_name}_フロー図.png" if self.config.generate_diagram_png else None
@@ -347,10 +358,8 @@ class DocumentProcessor:
                         outputs["diagram"] = str(diagram_result.image_path)
                     outputs["mermaid_code"] = diagram_result.mermaid_code
                     if diagram_result.markdown_path:
-                        diagram_markdown_path = diagram_result.markdown_path
                         outputs["diagram_markdown"] = str(diagram_result.markdown_path)
                     if diagram_result.mermaid_path:
-                        diagram_mermaid_path = diagram_result.mermaid_path
                         outputs["diagram_mermaid"] = str(diagram_result.mermaid_path)
                     logger.info(f"Diagram generated: {diagram_result.diagram_type}")
                 else:
@@ -361,18 +370,14 @@ class DocumentProcessor:
                 outputs["diagram"] = None
         
         # 2. Generate audio - combine title, summary, and key points
-        try:
-            audio_text = f"【{doc_title}】\n\n{summary_result.summary}"
-            if summary_result.key_points:
-                audio_text += "\n\n重要なポイントをまとめます。\n" + "\n".join([f"ポイント: {point}" for point in summary_result.key_points])
-            
-            audio_output = output_dir / f"{base_name}.mp3"
-            create_audio_summary(audio_text, audio_output)
-            outputs["audio"] = str(audio_output)
-            logger.info(f"Audio file generated: {audio_output}")
-        except Exception as e:
-            logger.warning(f"Audio generation failed: {e}")
-            outputs["audio"] = None
+        audio_text = f"【{doc_title}】\n\n{summary_result.summary}"
+        if summary_result.key_points:
+            audio_text += "\n\n重要なポイントをまとめます。\n" + "\n".join([f"ポイント: {point}" for point in summary_result.key_points])
+        
+        self._run_generation(
+            outputs, create_audio_summary, audio_text, output_dir / f"{base_name}.mp3",
+            output_key="audio"
+        )
         
         # 5. Generate QR code for audio playback (if file_id is available)
         qr_path = None
@@ -388,30 +393,20 @@ class DocumentProcessor:
             except Exception as e:
                 logger.warning(f"QR code generation failed (continuing): {e}")
         
-        # 2. Generate PDF (with diagram image and QR if present)
-        try:
-            pdf_output = output_dir / f"{base_name}.pdf"
-            create_formatted_pdf(full_content_text, pdf_output, title=doc_title,
-                                 compact_layout=compact_layout, use_emojis=use_emojis,
-                                 diagram_path=diagram_path_obj,
-                                 qr_image_path=qr_path)
-            outputs["pdf"] = str(pdf_output)
-            logger.info(f"PDF generated: {pdf_output}")
-        except Exception as e:
-            logger.warning(f"PDF generation failed: {e}")
-            outputs["pdf"] = None
+        # 3. Generate PDF (with diagram image and QR if present)
+        self._run_generation(
+            outputs, create_formatted_pdf, full_content_text, output_dir / f"{base_name}.pdf",
+            title=doc_title, compact_layout=compact_layout, use_emojis=use_emojis,
+            diagram_path=diagram_path_obj, qr_image_path=qr_path,
+            output_key="pdf"
+        )
         
-        # 3. Generate Word document (with diagram image and QR if present)
-        try:
-            docx_output = output_dir / f"{base_name}.docx"
-            create_word_document(full_content_text, docx_output, title=doc_title,
-                                 compact_layout=compact_layout, use_emojis=use_emojis,
-                                 diagram_path=diagram_path_obj,
-                                 qr_image_path=qr_path)
-            outputs["docx"] = str(docx_output)
-            logger.info(f"Word document generated: {docx_output}")
-        except Exception as e:
-            logger.warning(f"Word generation failed: {e}")
-            outputs["docx"] = None
+        # 4. Generate Word document (with diagram image and QR if present)
+        self._run_generation(
+            outputs, create_word_document, full_content_text, output_dir / f"{base_name}.docx",
+            title=doc_title, compact_layout=compact_layout, use_emojis=use_emojis,
+            diagram_path=diagram_path_obj, qr_image_path=qr_path,
+            output_key="docx"
+        )
         
         return outputs

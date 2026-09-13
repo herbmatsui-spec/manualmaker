@@ -61,6 +61,14 @@ class AppConfig:
         return self._settings.ocr.max_results
 
     @property
+    def ocr_batch_size(self) -> int:
+        return self._settings.ocr.batch_size
+
+    @property
+    def ocr_max_workers(self) -> int:
+        return self._settings.ocr.batch_size
+
+    @property
     def gemini_model_name(self) -> str:
         return self._settings.gemini.model
 

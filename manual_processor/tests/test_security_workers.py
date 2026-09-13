@@ -182,8 +182,12 @@ def test_workers_encryption_with_key_mock():
                 arr[i] = i % 256
             return arr
     
-    # Insert the mock workers module into sys.modules
-    sys.modules['workers'] = MockCrypto()
+    # Create a proper module-like object for workers.crypto
+    import types
+    workers_module = types.ModuleType('workers')
+    workers_module.crypto = MockCrypto()
+    sys.modules['workers'] = workers_module
+    
     try:
         with patch.dict('os.environ', {"ENCRYPTION_KEY": key_b64}):
             provider = WorkersEncryption("ENCRYPTION_KEY")

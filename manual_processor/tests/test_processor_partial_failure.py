@@ -15,6 +15,8 @@ def test_partial_ocr_failure():
     config.max_file_size_mb = 50
     config.supported_extensions = [".pdf"]
     config.pdf_dpi = 150
+    config.ocr_batch_size = 4
+    config.ocr_max_workers = 4
 
     processor = DocumentProcessor(config=config)
     processor.ocr_processor = MagicMock()

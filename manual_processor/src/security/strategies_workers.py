@@ -199,44 +199,97 @@ class WorkersEncryption(EncryptionProvider):
             return None
 
     def encrypt(self, data: bytes) -> Tuple[bytes, bool]:
-        """Encrypt using Web Crypto API (synchronous version for compatibility)"""
+        """Encrypt using Fernet (synchronous fallback for compatibility)"""
+        return self._encrypt_sync_fallback(data)
+    
+    def _encrypt_sync_fallback(self, data: bytes) -> Tuple[bytes, bool]:
+        """Synchronous encryption using Fernet as fallback"""
+        try:
+            from cryptography.fernet import Fernet
+            key = self._get_key()
+            if key is None:
+                return data, False
+            # Use first 32 bytes as Fernet key (base64 encoded)
+            import base64
+            fernet_key = base64.urlsafe_b64encode(key[:32])
+            f = Fernet(fernet_key)
+            encrypted = f.encrypt(data)
+            return encrypted, True
+        except Exception:
+            return data, False
+
+    async def encrypt_async(self, data: bytes) -> Tuple[bytes, bool]:
+        """Encrypt using Web Crypto API (async version for Workers)"""
+        return await self._encrypt_async(data)
+    
+    async def _encrypt_async(self, data: bytes) -> Tuple[bytes, bool]:
+        """Internal async encrypt implementation for Workers"""
         key = self._get_key()
         if key is None:
             return data, False
             
         try:
             # Access Workers Web Crypto API
-            # Note: In actual Workers, this would be async, but we provide a sync wrapper
-            # For true Workers deployment, this would need to be async, 
-            # but we'll provide a compatibility layer
             from workers import crypto
             
-            async def _encrypt():
-                # Generate IV
-                iv = crypto.getRandomValues(bytearray(12))
-                
-                # Import key
-                crypto_key = await crypto.subtle.import_key(
-                    "raw", key, {"name": "AES-GCM"}, False, ["encrypt"]
-                )
-                
-                # Encrypt
-                encrypted = await crypto.subtle.encrypt(
-                    {"name": "AES-GCM", "iv": iv},
-                    crypto_key,
-                    data
-                )
-                return iv + encrypted
+            # Generate IV
+            iv = crypto.getRandomValues(bytearray(12))
             
-            # Run async function in sync context (works in Workers via event loop)
-            result = asyncio.run(_encrypt())
-            return result, True
+            # Import key
+            crypto_key = await crypto.subtle.import_key(
+                "raw", key, {"name": "AES-GCM"}, False, ["encrypt"]
+            )
+            
+            # Encrypt
+            encrypted = await crypto.subtle.encrypt(
+                {"name": "AES-GCM", "iv": iv},
+                crypto_key,
+                data
+            )
+            return iv + encrypted, True
         except Exception:
             # Fallback: if crypto not available, return unencrypted
             return data, False
 
     def decrypt(self, encrypted_data: bytes) -> Tuple[bytes, bool]:
-        """Decrypt using Web Crypto API"""
+        """Decrypt using Fernet (synchronous fallback for compatibility)"""
+        return self._decrypt_sync_fallback(encrypted_data)
+    
+    def _decrypt_sync_fallback(self, encrypted_data: bytes) -> Tuple[bytes, bool]:
+        """Synchronous decryption using Fernet as fallback"""
+        if len(encrypted_data) < 12:
+            # Try Fernet anyway for data encrypted with sync fallback
+            try:
+                from cryptography.fernet import Fernet
+                key = self._get_key()
+                if key is None:
+                    return encrypted_data, False
+                import base64
+                fernet_key = base64.urlsafe_b64encode(key[:32])
+                f = Fernet(fernet_key)
+                decrypted = f.decrypt(encrypted_data)
+                return decrypted, True
+            except Exception:
+                return encrypted_data, False
+        try:
+            from cryptography.fernet import Fernet
+            key = self._get_key()
+            if key is None:
+                return encrypted_data, False
+            import base64
+            fernet_key = base64.urlsafe_b64encode(key[:32])
+            f = Fernet(fernet_key)
+            decrypted = f.decrypt(encrypted_data)
+            return decrypted, True
+        except Exception:
+            return encrypted_data, False
+
+    async def decrypt_async(self, encrypted_data: bytes) -> Tuple[bytes, bool]:
+        """Decrypt using Web Crypto API (async version for Workers)"""
+        return await self._decrypt_async(encrypted_data)
+    
+    async def _decrypt_async(self, encrypted_data: bytes) -> Tuple[bytes, bool]:
+        """Internal async decrypt implementation for Workers"""
         if len(encrypted_data) < 12:
             return encrypted_data, False
             
@@ -247,26 +300,22 @@ class WorkersEncryption(EncryptionProvider):
         try:
             from workers import crypto
             
-            async def _decrypt():
-                # Extract IV and ciphertext
-                iv = encrypted_data[:12]
-                ciphertext = encrypted_data[12:]
-                
-                # Import key
-                crypto_key = await crypto.subtle.import_key(
-                    "raw", key, {"name": "AES-GCM"}, False, ["decrypt"]
-                )
-                
-                # Decrypt
-                decrypted = await crypto.subtle.decrypt(
-                    {"name": "AES-GCM", "iv": iv},
-                    crypto_key,
-                    ciphertext
-                )
-                return decrypted
+            # Extract IV and ciphertext
+            iv = encrypted_data[:12]
+            ciphertext = encrypted_data[12:]
             
-            result = asyncio.run(_decrypt())
-            return result, True
+            # Import key
+            crypto_key = await crypto.subtle.import_key(
+                "raw", key, {"name": "AES-GCM"}, False, ["decrypt"]
+            )
+            
+            # Decrypt
+            decrypted = await crypto.subtle.decrypt(
+                {"name": "AES-GCM", "iv": iv},
+                crypto_key,
+                ciphertext
+            )
+            return decrypted, True
         except Exception:
             return encrypted_data, False
 

@@ -634,6 +634,8 @@ class TestExtractTextFromPdfPartialFailure:
             mock_config_instance.gemini_model_name = "gemini-1.5-flash"
             mock_config_instance.summary_model = "gemini-1.5-flash"
             mock_config_instance.pdf_dpi = 150
+            mock_config_instance.ocr_batch_size = 4
+            mock_config_instance.ocr_max_workers = 4
 
             with patch('src.processor.processor.HandwrittenPromptBuilder.from_config'), \
                  patch('src.processor.processor.ProcessorFactory.create_processor'), \
@@ -681,6 +683,8 @@ class TestExtractTextFromPdfPartialFailure:
             mock_config_instance.gemini_model_name = "gemini-1.5-flash"
             mock_config_instance.summary_model = "gemini-1.5-flash"
             mock_config_instance.pdf_dpi = 150
+            mock_config_instance.ocr_batch_size = 4
+            mock_config_instance.ocr_max_workers = 4
 
             with patch('src.processor.processor.HandwrittenPromptBuilder.from_config'), \
                  patch('src.processor.processor.ProcessorFactory.create_processor'), \
@@ -731,6 +735,8 @@ class TestExtractTextFromPdfPartialFailure:
             mock_config_instance.gemini_model_name = "gemini-1.5-flash"
             mock_config_instance.summary_model = "gemini-1.5-flash"
             mock_config_instance.pdf_dpi = 150
+            mock_config_instance.ocr_batch_size = 4
+            mock_config_instance.ocr_max_workers = 4
 
             with patch('src.processor.processor.HandwrittenPromptBuilder.from_config'), \
                  patch('src.processor.processor.ProcessorFactory.create_processor'), \
