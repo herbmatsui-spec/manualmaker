@@ -305,3 +305,223 @@ class TestSaveSingleFormat:
         with patch("src.output_manager.format_to_markdown", return_value="md"):
             with pytest.raises(ValueError):
                 save_single_format(content, tmp_path / "x.bin", "unknown")
+
+
+class TestSaveAllFormatsCoverageStep7:
+    """Step 7: output_manager.py 未到達行のカバレッジテスト"""
+
+    def _make_content(self):
+        return GeminiResult(title="T", summary="S", key_points=["k"], sections=[])
+
+    # ---------- L85, L102, L114, L126: 各生成の成功ログ ----------
+    def test_save_all_formats_success_all_outputs(self, tmp_path):
+        content = self._make_content()
+        qr_path = tmp_path / "out_qr.png"
+        pdf_path = tmp_path / "out.pdf"
+        docx_path = tmp_path / "out.docx"
+        audio_path = tmp_path / "out.mp3"
+
+        cfg = OutputConfig(
+            output_directory=tmp_path,
+            base_name="out",
+            include_pdf=True,
+            include_docx=True,
+            include_audio=True,
+            include_qr=True,
+        )
+
+        with patch("src.output_manager.format_to_markdown", return_value="md"), \
+             patch("src.output_manager.QRGenerator") as qr_mod, \
+             patch("src.output_manager.AudioGenerator") as audio_mod, \
+             patch("src.output_manager.create_formatted_pdf", return_value=pdf_path), \
+             patch("src.output_manager.create_word_document", return_value=docx_path):
+            qr_mod.return_value.generate_qr.return_value = qr_path
+            audio_mod.return_value.generate_audio.return_value = audio_path
+            result = save_all_formats(content, Path("in.pdf"), cfg, file_id="fid")
+
+        assert result.qr_path == qr_path
+        assert result.pdf_path == pdf_path
+        assert result.docx_path == docx_path
+        assert result.audio_path == audio_path
+        assert result.metadata["errors"] == []
+
+    # ---------- L106-108, L118-120, L130-132: 予期せぬ例外 ----------
+    def test_save_all_formats_unexpected_errors_recorded(self, tmp_path):
+        content = self._make_content()
+        cfg = OutputConfig(
+            output_directory=tmp_path,
+            base_name="out",
+            include_pdf=True,
+            include_docx=True,
+            include_audio=True,
+            include_qr=False,
+        )
+
+        with patch("src.output_manager.format_to_markdown", return_value="md"), \
+             patch("src.output_manager.AudioGenerator") as audio_mod, \
+             patch("src.output_manager.create_formatted_pdf",
+                   side_effect=RuntimeError("pdf unexpected")), \
+             patch("src.output_manager.create_word_document",
+                   side_effect=RuntimeError("docx unexpected")):
+            audio_mod.return_value.generate_audio.side_effect = RuntimeError("audio unexpected")
+            result = save_all_formats(content, Path("in.pdf"), cfg)
+
+        errors = result.metadata["errors"]
+        assert any("Audio" in e and "audio unexpected" in e for e in errors)
+        assert any("PDF" in e and "pdf unexpected" in e for e in errors)
+        assert any("Word" in e and "docx unexpected" in e for e in errors)
+
+    # ---------- L155-186: Drive アップロード成功系 ----------
+    def test_save_all_formats_drive_upload_authenticated(self, tmp_path):
+        content = self._make_content()
+        pdf_path = tmp_path / "out.pdf"
+        docx_path = tmp_path / "out.docx"
+        audio_path = tmp_path / "out.mp3"
+        for p in (pdf_path, docx_path, audio_path):
+            p.write_bytes(b"dummy")
+
+        cfg = OutputConfig(
+            output_directory=tmp_path,
+            base_name="out",
+            include_pdf=True,
+            include_docx=True,
+            include_audio=True,
+            include_qr=False,
+            include_drive=True,
+            drive_folder_id="folder_123",
+        )
+
+        fake_drive_file = MagicMock()
+        fake_drive_file.file_id = "drive_file_1"
+        fake_drive_file.web_view_link = "https://drive.google.com/view"
+        fake_drive_file.web_content_link = "https://drive.google.com/content"
+
+        fake_drive_module = MagicMock()
+        mock_manager = fake_drive_module.GoogleDriveManager.return_value
+        mock_manager.is_authenticated.return_value = True
+        mock_manager.upload_and_share.return_value = fake_drive_file
+        fake_drive_module.GoogleDriveError = Exception
+
+        with patch("src.output_manager.format_to_markdown", return_value="md"), \
+             patch("src.output_manager.create_formatted_pdf", return_value=pdf_path), \
+             patch("src.output_manager.create_word_document", return_value=docx_path), \
+             patch("src.output_manager.AudioGenerator") as audio_mod, \
+             patch.dict("sys.modules", {"src.google_drive_manager": fake_drive_module}):
+            audio_mod.return_value.generate_audio.return_value = audio_path
+            result = save_all_formats(content, Path("in.pdf"), cfg)
+
+        drive_urls = result.metadata["drive_urls"]
+        assert set(drive_urls.keys()) == {"pdf", "docx", "audio"}
+        for entry in drive_urls.values():
+            assert entry["file_id"] == "drive_file_1"
+        assert mock_manager.upload_and_share.call_count == 3
+
+    # ---------- L158: フォルダ作成 (drive_folder_name 経由) ----------
+    def test_save_all_formats_drive_folder_created_from_name(self, tmp_path):
+        content = self._make_content()
+        pdf_path = tmp_path / "out.pdf"
+        pdf_path.write_bytes(b"dummy")
+
+        cfg = OutputConfig(
+            output_directory=tmp_path,
+            base_name="out",
+            include_pdf=True,
+            include_docx=False,
+            include_audio=False,
+            include_qr=False,
+            include_drive=True,
+            drive_folder_id=None,
+        )
+        cfg.drive_folder_name = "TestFolder"
+
+        fake_drive_file = MagicMock()
+        fake_drive_file.file_id = "drive_file_2"
+        fake_drive_file.web_view_link = "https://drive.google.com/view"
+        fake_drive_file.web_content_link = "https://drive.google.com/content"
+
+        fake_drive_module = MagicMock()
+        mock_manager = fake_drive_module.GoogleDriveManager.return_value
+        mock_manager.is_authenticated.return_value = True
+        mock_manager.create_folder.return_value = "created_folder_id"
+        mock_manager.upload_and_share.return_value = fake_drive_file
+        fake_drive_module.GoogleDriveError = Exception
+
+        with patch("src.output_manager.format_to_markdown", return_value="md"), \
+             patch("src.output_manager.create_formatted_pdf", return_value=pdf_path), \
+             patch.dict("sys.modules", {"src.google_drive_manager": fake_drive_module}):
+            result = save_all_formats(content, Path("in.pdf"), cfg)
+
+        mock_manager.create_folder.assert_called_once_with("TestFolder")
+        assert result.metadata["drive_urls"]["pdf"]["file_id"] == "drive_file_2"
+        _, kwargs = mock_manager.upload_and_share.call_args
+        assert kwargs["folder_id"] == "created_folder_id"
+
+    # ---------- L159-160: フォルダ作成失敗時の警告 ----------
+    def test_save_all_formats_drive_folder_creation_error(self, tmp_path):
+        content = self._make_content()
+        pdf_path = tmp_path / "out.pdf"
+        pdf_path.write_bytes(b"dummy")
+
+        cfg = OutputConfig(
+            output_directory=tmp_path,
+            base_name="out",
+            include_pdf=True,
+            include_docx=False,
+            include_audio=False,
+            include_qr=False,
+            include_drive=True,
+            drive_folder_id=None,
+        )
+        cfg.drive_folder_name = "TestFolder"
+
+        fake_drive_file = MagicMock()
+        fake_drive_file.file_id = "drive_file_3"
+        fake_drive_file.web_view_link = "https://drive.google.com/view"
+        fake_drive_file.web_content_link = "https://drive.google.com/content"
+
+        fake_drive_module = MagicMock()
+        mock_manager = fake_drive_module.GoogleDriveManager.return_value
+        mock_manager.is_authenticated.return_value = True
+        mock_manager.create_folder.side_effect = Exception("Folder failed")
+        mock_manager.upload_and_share.return_value = fake_drive_file
+        fake_drive_module.GoogleDriveError = Exception
+
+        with patch("src.output_manager.format_to_markdown", return_value="md"), \
+             patch("src.output_manager.create_formatted_pdf", return_value=pdf_path), \
+             patch.dict("sys.modules", {"src.google_drive_manager": fake_drive_module}):
+            result = save_all_formats(content, Path("in.pdf"), cfg)
+
+        # フォルダ作成失敗してもアップロードは続行 (folder_id=None)
+        assert result.metadata["drive_urls"]["pdf"]["file_id"] == "drive_file_3"
+        _, kwargs = mock_manager.upload_and_share.call_args
+        assert kwargs["folder_id"] is None
+
+    # ---------- L184-186: アップロード失敗時の警告 ----------
+    def test_save_all_formats_drive_upload_per_file_error(self, tmp_path):
+        content = self._make_content()
+        pdf_path = tmp_path / "out.pdf"
+        pdf_path.write_bytes(b"dummy")
+
+        cfg = OutputConfig(
+            output_directory=tmp_path,
+            base_name="out",
+            include_pdf=True,
+            include_docx=False,
+            include_audio=False,
+            include_qr=False,
+            include_drive=True,
+            drive_folder_id="folder_123",
+        )
+
+        fake_drive_module = MagicMock()
+        mock_manager = fake_drive_module.GoogleDriveManager.return_value
+        mock_manager.is_authenticated.return_value = True
+        mock_manager.upload_and_share.side_effect = Exception("Upload failed")
+        fake_drive_module.GoogleDriveError = Exception
+
+        with patch("src.output_manager.format_to_markdown", return_value="md"), \
+             patch("src.output_manager.create_formatted_pdf", return_value=pdf_path), \
+             patch.dict("sys.modules", {"src.google_drive_manager": fake_drive_module}):
+            result = save_all_formats(content, Path("in.pdf"), cfg)
+
+        assert result.metadata["drive_urls"]["pdf"] == {"error": "Upload failed"}

@@ -28,6 +28,13 @@ try:
 except ImportError:
     _HAS_CRYPTO = False
 
+try:
+    from .security.config import SecurityConfig
+    _HAS_SECURITY_CONFIG = True
+except ImportError:
+    _HAS_SECURITY_CONFIG = False
+    SecurityConfig = None  # type: ignore
+
 logger = logging.getLogger(__name__)
 
 
@@ -47,6 +54,17 @@ class SecurityManager:
     API_KEY_USERNAME = "gemini_api_key"
 
     PATTERNS: List[Tuple[str, str, str]] = []
+    _config: Optional["SecurityConfig"] = None
+
+    @classmethod
+    def _get_config(cls, config: Optional["SecurityConfig"] = None) -> Optional["SecurityConfig"]:
+        """Get config from parameter or class attribute"""
+        return config or cls._config
+
+    @classmethod
+    def set_config(cls, config: "SecurityConfig") -> None:
+        """Set the default security configuration"""
+        cls._config = config
 
     @classmethod
     def _load_pii_patterns(cls) -> List[Tuple[str, str, str]]:
@@ -106,13 +124,14 @@ class SecurityManager:
         ]
 
     @classmethod
-    def mask_sensitive_data(cls, text: str, record_positions: bool = False) -> Tuple[str, Dict[str, Any]]:
+    def mask_sensitive_data(cls, text: str, record_positions: bool = False, config: Optional["SecurityConfig"] = None) -> Tuple[str, Dict[str, Any]]:
         """
         Mask sensitive personal information in text
 
         Args:
             text: Input text to mask
             record_positions: If True, also return positions of masked items
+            config: Optional SecurityConfig for dependency injection
 
         Returns:
             (masked_text, detection_info)
@@ -123,7 +142,12 @@ class SecurityManager:
         if not text:
             return "", {"counts": {}}
 
-        patterns = cls._load_pii_patterns()
+        cfg = cls._get_config(config)
+        if cfg and cfg.pattern_provider:
+            patterns = cfg.pattern_provider.load_patterns()
+        else:
+            patterns = cls._load_pii_patterns()
+        
         masked = text
         counts = {}
         positions = []
@@ -152,7 +176,7 @@ class SecurityManager:
         return masked, result
 
     @classmethod
-    def unmask_data(cls, masked_text: str, positions: List[MaskedPosition], original_values: List[str]) -> str:
+    def unmask_data(cls, masked_text: str, positions: List[MaskedPosition], original_values: List[str], config: Optional["SecurityConfig"] = None) -> str:
         """
         Unmask previously masked data
 
@@ -160,6 +184,7 @@ class SecurityManager:
             masked_text: Text with masked values
             positions: List of MaskedPosition from original masking
             original_values: List of original values (must match positions order)
+            config: Optional SecurityConfig for dependency injection
 
         Returns:
             Text with original values restored
@@ -182,8 +207,19 @@ class SecurityManager:
         return result
 
     @classmethod
-    def save_api_key(cls, key: str) -> bool:
+    def save_api_key(cls, key: str, config: Optional["SecurityConfig"] = None) -> bool:
         """OSの資格情報マネージャーにAPIキーを保存"""
+        cfg = cls._get_config(config)
+        if cfg and cfg.key_store:
+            try:
+                cfg.key_store.set(cls.SERVICE_NAME, cls.API_KEY_USERNAME, key)
+                logger.info("APIキーをセキュアストレージに保存しました")
+                return True
+            except Exception as e:
+                logger.error(f"APIキーの保存失敗: {e}")
+                return False
+        
+        # Fallback to original behavior
         if not _HAS_KEYRING:
             logger.warning("keyringライブラリが利用できません")
             return False
@@ -196,8 +232,17 @@ class SecurityManager:
             return False
 
     @classmethod
-    def load_api_key(cls) -> Optional[str]:
+    def load_api_key(cls, config: Optional["SecurityConfig"] = None) -> Optional[str]:
         """OSの資格情報マネージャーからAPIキーを取得"""
+        cfg = cls._get_config(config)
+        if cfg and cfg.key_store:
+            try:
+                return cfg.key_store.get(cls.SERVICE_NAME, cls.API_KEY_USERNAME)
+            except Exception as e:
+                logger.error(f"APIキーの読み込み失敗: {e}")
+                return None
+        
+        # Fallback to original behavior
         if not _HAS_KEYRING:
             return None
         try:
@@ -208,7 +253,7 @@ class SecurityManager:
 
     @classmethod
     def _get_encryption_key(cls) -> Optional[bytes]:
-        """Get encryption key from environment variable"""
+        """Get encryption key from environment variable (legacy)"""
         key_env = os.getenv("ENCRYPTION_KEY", "")
         if not key_env:
             return None
@@ -219,7 +264,7 @@ class SecurityManager:
 
     @classmethod
     def _get_or_create_fernet(cls) -> Optional[Fernet]:
-        """Get Fernet instance (key is cached after first call)"""
+        """Get Fernet instance (key is cached after first call) (legacy)"""
         if not hasattr(cls, '_fernet_cache'):
             cls._fernet_cache = None
 
@@ -245,12 +290,17 @@ class SecurityManager:
             return None
 
     @classmethod
-    def encrypt_data(cls, data: bytes) -> Tuple[bytes, bool]:
+    def encrypt_data(cls, data: bytes, config: Optional["SecurityConfig"] = None) -> Tuple[bytes, bool]:
         """
         Encrypt data using Fernet symmetric encryption
 
         Returns: (encrypted_data, success)
         """
+        cfg = cls._get_config(config)
+        if cfg and cfg.encryption_provider:
+            return cfg.encryption_provider.encrypt(data)
+        
+        # Fallback to original behavior (legacy path for backward compatibility)
         if not _HAS_CRYPTO:
             logger.warning("cryptography library not available")
             return data, False
@@ -268,12 +318,17 @@ class SecurityManager:
             return data, False
 
     @classmethod
-    def decrypt_data(cls, encrypted_data: bytes) -> Tuple[bytes, bool]:
+    def decrypt_data(cls, encrypted_data: bytes, config: Optional["SecurityConfig"] = None) -> Tuple[bytes, bool]:
         """
         Decrypt data using Fernet symmetric encryption
 
         Returns: (decrypted_data, success)
         """
+        cfg = cls._get_config(config)
+        if cfg and cfg.encryption_provider:
+            return cfg.encryption_provider.decrypt(encrypted_data)
+        
+        # Fallback to original behavior (legacy path for backward compatibility)
         if not _HAS_CRYPTO:
             logger.warning("cryptography library not available")
             return encrypted_data, False

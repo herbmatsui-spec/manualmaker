@@ -327,5 +327,245 @@ content
             with pytest.raises(GeminiAPIError):
                 processor._generate_with_retry("test prompt")
 
+class TestGeminiProcessorCoverageStep8:
+    """Step 8: gemini_processor.py 未到達行のカバレッジテスト"""
+
+    def _make_processor(self):
+        with patch('src.gemini_processor.genai.Client'):
+            return GeminiProcessor(api_key="test-key")
+
+    # ---------- L102: _chunk_text 空テキスト ----------
+    def test_chunk_text_empty_returns_empty_list(self):
+        """空テキストは空リストを返すこと"""
+        processor = self._make_processor()
+        assert processor._chunk_text("") == []
+        assert processor._chunk_text("   ") == []
+
+    # ---------- L69-73: __init__ 例外パス ----------
+    def test_init_generic_error_wrapped(self):
+        """初期化中の予期せぬ例外は GeminiAPIError でラップされること"""
+        with patch('src.gemini_processor.genai.Client', side_effect=Exception("init boom")):
+            with pytest.raises(GeminiAPIError, match="Gemini API initialization failed"):
+                GeminiProcessor(api_key="test-key")
+
+    def test_init_gemini_api_error_reraised(self):
+        """初期化中の GeminiAPIError はそのまま再送出されること"""
+        with patch('src.gemini_processor.genai.Client', side_effect=GeminiAPIError("直接エラー")):
+            with pytest.raises(GeminiAPIError, match="直接エラー"):
+                GeminiProcessor(api_key="test-key")
+
+    # ---------- L165, L178: summarize_text 分岐 ----------
+    def test_summarize_cancel_token_checked_per_chunk(self):
+        """チャンクごとに cancel_token がチェックされること"""
+        processor = self._make_processor()
+        cancel_token = Mock()
+        with patch.object(processor, '_chunk_text', return_value=["チャンク1"]), \
+             patch.object(processor, '_generate_with_retry', return_value="要約"):
+            result = processor.summarize_text("テキスト", cancel_token=cancel_token)
+        assert result == "要約"
+        cancel_token.throw_if_cancelled.assert_called()
+
+    def test_summarize_empty_summaries_returns_empty(self):
+        """生成結果が空の場合、空文字を返すこと"""
+        processor = self._make_processor()
+        with patch.object(processor, '_chunk_text', return_value=["チャンク1"]), \
+             patch.object(processor, '_generate_with_retry', return_value=""):
+            result = processor.summarize_text("テキスト")
+        assert result == ""
+
+    # ---------- L189-197: 3チャンク以上の Map-Reduce 統合 ----------
+    def test_summarize_multi_chunk_map_reduce(self):
+        """3チャンク以上の場合、最終統合が行われること"""
+        processor = self._make_processor()
+        cancel_token = Mock()
+        with patch.object(processor, '_chunk_text',
+                          return_value=["c1", "c2", "c3"]), \
+             patch.object(processor, '_generate_with_retry',
+                          side_effect=["s1", "s2", "s3", "統合要約"]):
+            result = processor.summarize_text("長いテキスト", cancel_token=cancel_token)
+        assert result == "統合要約"
+
+    # ---------- L201: summarize_text キャンセル時の再送出 ----------
+    def test_summarize_cancelled_reraises_original(self):
+        """キャンセルされた場合は元の例外が再送出されること"""
+        processor = self._make_processor()
+        cancel_token = Mock()
+        cancel_token.is_cancelled = True
+        with patch.object(processor, '_chunk_text', return_value=["c1"]), \
+             patch.object(processor, '_generate_with_retry',
+                          side_effect=Exception("キャンセル")):
+            with pytest.raises(Exception, match="キャンセル"):
+                processor.summarize_text("テキスト", cancel_token=cancel_token)
+
+    # ---------- L213, L242: extract_key_points 分岐 ----------
+    def test_extract_key_points_cancel_token_checked(self):
+        """cancel_token がチェックされること"""
+        processor = self._make_processor()
+        cancel_token = Mock()
+        with patch.object(processor, '_generate_with_retry',
+                          return_value="- ポイント1\n- ポイント2"):
+            points = processor.extract_key_points("テキスト", cancel_token=cancel_token)
+        assert points == ["ポイント1", "ポイント2"]
+        cancel_token.throw_if_cancelled.assert_called_once()
+
+    def test_extract_key_points_cancelled_reraises(self):
+        """キャンセルされた場合は元の例外が再送出されること"""
+        processor = self._make_processor()
+        cancel_token = Mock()
+        cancel_token.is_cancelled = True
+        with patch.object(processor, '_generate_with_retry',
+                          side_effect=Exception("キャンセル")):
+            with pytest.raises(Exception, match="キャンセル"):
+                processor.extract_key_points("テキスト", cancel_token=cancel_token)
+
+    # ---------- L252, L279-285: process_document 分岐 ----------
+    def test_process_document_cancel_token_checked(self):
+        """cancel_token がチェックされること"""
+        processor = self._make_processor()
+        cancel_token = Mock()
+        with patch.object(processor, 'summarize_text', return_value="要約"), \
+             patch.object(processor, 'extract_key_points', return_value=["k"]):
+            result = processor.process_document("テキスト", cancel_token=cancel_token)
+        assert result.summary == "要約"
+        cancel_token.throw_if_cancelled.assert_called_once()
+
+    def test_process_document_gemini_api_error_reraised(self):
+        """GeminiAPIError はそのまま再送出されること"""
+        processor = self._make_processor()
+        with patch.object(processor, 'summarize_text',
+                          side_effect=GeminiAPIError("要約エラー")):
+            with pytest.raises(GeminiAPIError, match="要約エラー"):
+                processor.process_document("テキスト")
+
+    def test_process_document_cancelled_reraises_original(self):
+        """キャンセルされた場合は元の例外が再送出されること"""
+        processor = self._make_processor()
+        cancel_token = Mock()
+        cancel_token.is_cancelled = True
+        with patch.object(processor, 'summarize_text',
+                          side_effect=ValueError("中断")):
+            with pytest.raises(ValueError, match="中断"):
+                processor.process_document("テキスト", cancel_token=cancel_token)
+
+    def test_process_document_generic_error_wrapped(self):
+        """予期せぬ例外は GeminiAPIError でラップされること"""
+        processor = self._make_processor()
+        with patch.object(processor, 'summarize_text',
+                          side_effect=ValueError("予期せぬエラー")):
+            with pytest.raises(GeminiAPIError, match="ドキュメント処理に失敗しました"):
+                processor.process_document("テキスト")
+
+    # ---------- L378, L384: text マーカーパーサ分岐 ----------
+    def test_text_markers_without_glossary_multiple_sections(self):
+        """[GLOSSARY] なし・複数セクションのマーカーテキストをパースできること"""
+        processor = self._make_processor()
+        marker_text = (
+            "[TITLE]\n"
+            "テストタイトル\n"
+            "[SUMMARY]\n"
+            "サマリーです。\n"
+            "[KEY_POINTS]\n"
+            "- ポイント1\n"
+            "[SECTIONS]\n"
+            "## 1. 準備\n"
+            "内容A\n"
+            "## 2. 実行\n"
+            "内容B\n"
+        )
+        with patch.object(processor, '_generate_with_retry', return_value=marker_text):
+            result = processor._process_document_text_markers("入力")
+        assert result.title == "テストタイトル"
+        assert result.summary == "サマリーです。"
+        assert result.key_points == ["ポイント1"]
+        assert result.glossary == []
+        assert len(result.sections) == 2
+        assert result.sections[0].title == "1. 準備"
+        assert result.sections[0].content == "内容A"
+        assert result.sections[1].title == "2. 実行"
+        assert result.sections[1].content == "内容B"
+
+    # ---------- L397: タイトルが空の場合の自動生成 ----------
+    def test_text_markers_empty_title_generates_title(self):
+        """タイトルが空の場合 generate_title で自動生成されること"""
+        processor = self._make_processor()
+        marker_text = (
+            "[TITLE]\n"
+            "\n"
+            "[SUMMARY]\n"
+            "サマリーです。\n"
+            "[KEY_POINTS]\n"
+            "- ポイント1\n"
+            "[SECTIONS]\n"
+            "## 1. 準備\n"
+            "内容\n"
+        )
+        with patch.object(processor, '_generate_with_retry', return_value=marker_text), \
+             patch.object(processor, 'generate_title', return_value="自動生成タイトル") as mock_gt:
+            result = processor._process_document_text_markers("入力")
+        mock_gt.assert_called_once()
+        assert result.title == "自動生成タイトル"
+
+
+class TestModuleImportFallbackStep8:
+    """モジュールレベル import 分岐のテスト (L14-16, L66-67, L91-92)"""
+
+    def test_genai_import_fallback_uses_generativeai(self):
+        """google.genai が使えない場合 google.generativeai へフォールバックすること"""
+        import importlib
+        import sys
+        import types
+        import src.gemini_processor as gemini_mod
+
+        original_processor_cls = gemini_mod.GeminiProcessor
+        original_result_cls = gemini_mod.GeminiResult
+
+        saved = {
+            name: sys.modules[name]
+            for name in ("google", "google.genai", "google.generativeai")
+            if name in sys.modules
+        }
+
+        fake_google = types.ModuleType("google")
+        fake_gg = types.ModuleType("google.generativeai")
+        fake_gg.configure = Mock()
+        fake_gg.GenerativeModel = Mock()
+
+        try:
+            sys.modules["google"] = fake_google
+            # NOTE: sys.modules["google.genai"] = None では CPython が None を
+            # 返してしまうため ImportError にならない。genai を sys.modules から
+            # 削除し、親 fake モジュールに __path__ を与えないことで
+            # 「cannot import name 'genai' from 'google'」の ImportError を発生させる。
+            sys.modules.pop("google.genai", None)  # from google import genai -> ImportError
+            sys.modules["google.generativeai"] = fake_gg
+            importlib.reload(gemini_mod)
+
+            assert gemini_mod._HAS_GENAI is False
+
+            # L66-67: genai.configure + GenerativeModel パス
+            processor = gemini_mod.GeminiProcessor(
+                api_key="fallback-key", model_name="fallback-model")
+            fake_gg.configure.assert_called_once_with(api_key="fallback-key")
+            fake_gg.GenerativeModel.assert_called_once_with("fallback-model")
+
+            # L91-92: self.model.generate_content パス
+            fake_model = fake_gg.GenerativeModel.return_value
+            fake_response = Mock()
+            fake_response.text = "  フォールバック結果  "
+            fake_model.generate_content.return_value = fake_response
+            result = processor._generate_with_retry("prompt")
+            assert result == "フォールバック結果"
+        finally:
+            for name in ("google", "google.genai", "google.generativeai"):
+                if name in saved:
+                    sys.modules[name] = saved[name]
+                else:
+                    sys.modules.pop(name, None)
+            importlib.reload(gemini_mod)
+            # クラス同一性を復元（他テストモジュールが保持する参照を保護）
+            gemini_mod.GeminiProcessor = original_processor_cls
+            gemini_mod.GeminiResult = original_result_cls
+
+
 if __name__ == "__main__":
     pytest.main([__file__, "-v"])

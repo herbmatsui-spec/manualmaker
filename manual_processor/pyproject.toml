@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "manual_processor"
-version = "2.4.0"
+version = "3.0.0"
 description = "手書きマニュアル自動整理システム - AI-powered OCR and document processing"
 readme = "README.md"
 license = {text = "MIT"}
@@ -89,7 +89,7 @@ exclude_lines = [
     "raise NotImplementedError",
     "if __name__ == .__main__.:",
 ]
-fail_under = 85
+fail_under = 90
 
 [tool.bandit]
 exclude_dirs = ["tests", "build", "__pycache__"]

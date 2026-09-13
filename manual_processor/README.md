@@ -1,9 +1,9 @@
-# 手書きマニュアル処理システム (Manual Processor) v2.5.1
+# 手書きマニュアル処理システム (Manual Processor) v3.0.0
 
 [![Python Version](https://img.shields.io/badge/python-3.8%2B-blue.svg)](https://www.python.org/)
 [![License](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
 [![Platform](https://img.shields.io/badge/platform-Windows%2010%2F11-win.svg)]()
-[![Tests](https://img.shields.io/badge/tests-1203%20passed-brightgreen.svg)]()
+[![Tests](https://img.shields.io/badge/tests-1325%20passed-brightgreen.svg)]()
 [![Coverage](https://img.shields.io/badge/coverage-90%25-brightgreen.svg)](https://codecov.io/)
 [![Status](https://img.shields.io/badge/status-production%20ready-brightgreen.svg)]()
 
@@ -23,6 +23,16 @@
   - Gemini API トラブル時のローカルプロセッサーフォールバックメカニズム (`ProcessorFactory`)。
 - 🔒 **セキュリティ & 個人情報自動マスキング**
   - 日本の電話番号・メールアドレス・郵便番号・クレジットカード番号・IPアドレス等の自動検出・マスキング (`SecurityManager`)。
++ ⚙️ **セキュリティ戦略パターン & 依存性注入 (v3.0 新機能)**
+  - `SecurityManager` が **依存性注入 (Dependency Injection)** に対応し、バックエンド戦略をランタイムで切り替え可能 (`SecurityConfig`)。
+  - **ローカル環境**: ハードコードパターン / 環境変数キーストア / 暗号化無効戦略
+  - **Cloudflare Workers環境**: KVストレージパターン / KVキーストア / Web Crypto API 暗号化
+  - `create_workers_config()` によるワンクリック Workers 対応設定生成
+  - ファイルシステム・keyring・cryptography ライブラリ非依存で Workers スタンドアロン実行可能
++ 🌐 **Cloudflare Workers スタンドアロンデプロイ対応 (v3.0 新機能)**
+  - `SecurityManager` が **Cloudflare Workers 環境でスタンドアロン動作** 可能に
+  - KV Namespace (`PII_PATTERNS`, `API_KEYS`) と Secret (`ENCRYPTION_KEY`) のみで運用可能
+  - `wrangler publish` だけでデプロイ完了、追加インフラ不要
 - 🚀 **性能最適化 & バッチ並列 OCR / キャッシュ管理**
   - メモリ (LRU Eviction) およびディスクベースの2層キャッシュ構造 (`CacheManager`)。
   - 大規模 PDF に対応した **バッチ並列 OCR & メモリ自動解放**（ページごとのリソース即時破棄）。
@@ -64,8 +74,13 @@ manual_processor/
 │   ├── i18n_manager.py      # 多言語対応 (i18n)
 │   ├── processor/           # プロセッサーファクトリー & ハイブリッド切り替え
 │   ├── gui/                 # デスクトップ GUI モジュール
-│   └── web/                 # FastAPI Web UI バックエンド & フロントエンド
-├── tests/                   # pytest テストスイート (1121件)
+│   ├── web/                 # FastAPI Web UI バックエンド & フロントエンド
+│   └── security/            # セキュリティ戦略パターン実装 (v3.0+)
+│       ├── interfaces.py    # PatternProvider/KeyStore/EncryptionProvider プロトコル
+│       ├── strategies.py    # ハードコード/環境変数/無効化戦略
+│       ├── strategies_workers.py # Cloudflare Workers用戦略 (KV/Web Crypto)
+│       └── config.py        # SecurityConfig DI 設定クラス
+├── tests/                   # pytest テストスイート (1325件)
 ├── scripts/                 # スタンドアロン exe ビルドスクリプト等
 ├── main.py                  # アプリケーション共通エントリーポイント
 └── requirements.txt         # 依存ライブラリ一覧
@@ -133,15 +148,126 @@ python scripts/build_exe.py
 
 ---
 
+## 🔒 セキュリティ & 個人情報自動マスキング
+
+- 日本の電話番号・メールアドレス・郵便番号・クレジットカード番号・IPアドレス等の自動検出・マスキング (`SecurityManager`)。
+
+### SecurityManager 設定駆動アーキテクチャ (v3.0+)
+
+v3.0 より `SecurityManager` は **依存性注入 (Dependency Injection)** に完全対応しました。`SecurityConfig` を通じてバックエンド戦略をランタイムで切り替え可能です。
+
+#### 基本的な使用方法 (ローカル環境)
+
+```python
+from src.security.config import SecurityConfig
+from src.security.strategies import HardcodedPatternProvider, EnvVarKeyStore, NoOpEncryption
+from src.security_manager import SecurityManager
+
+# カスタム設定を作成
+config = SecurityConfig(
+    pattern_provider=HardcodedPatternProvider(),  # ハードコード済みPIIパターン
+    key_store=EnvVarKeyStore(),                    # 環境変数ベースのAPIキー保存
+    encryption_provider=NoOpEncryption()           # 暗号化なし（開発・テスト用）
+)
+
+# SecurityManager で使用
+masked, info = SecurityManager.mask_sensitive_data(
+    "連絡先: test@example.com",
+    config=config
+)
+print(masked)  # "連絡先: [REDACTED_EMAIL]"
+print(info["counts"])  # {"EMAIL": 1}
+```
+
+#### Cloudflare Workers 環境での使用
+
+```python
+from src.security.config import SecurityConfig
+from src.security.strategies_workers import create_workers_config
+from src.security_manager import SecurityManager
+
+# Workers環境用設定（KVストレージ自動検出）
+config = create_workers_config()
+
+# 通常通り使用
+masked, info = SecurityManager.mask_sensitive_data(
+    "連絡先: test@example.com",
+    config=config
+)
+```
+
+#### カスタムパターンプロバイダーの実装
+
+```python
+from src.security.interfaces import PatternProvider
+from src.security.config import SecurityConfig
+from src.security.strategies import EnvVarKeyStore, NoOpEncryption
+from src.security_manager import SecurityManager
+
+class CustomPatternProvider(PatternProvider):
+    def load_patterns(self):
+        return [
+            ("CUSTOM_ID", r"ID-\d{6}", "[REDACTED_ID]"),
+            ("INTERNAL_CODE", r"INT-[A-Z]{3}", "[REDACTED_CODE]"),
+        ]
+
+config = SecurityConfig(
+    pattern_provider=CustomPatternProvider(),
+    key_store=EnvVarKeyStore(),
+    encryption_provider=NoOpEncryption()
+)
+
+masked, info = SecurityManager.mask_sensitive_data(
+    "User ID-123456 with code INT-ABC",
+    config=config
+)
+# "User [REDACTED_ID] with code [REDACTED_CODE]"
+```
+
+#### 後方互換性
+
+既存コードは変更不要です。`config` パラメータを渡さない場合、従来の動作（YAML設定ファイル、keyring、環境変数ベースの暗号化）がそのまま維持されます。
+
+```python
+# 既存コード（変更なしで動作）
+from src.security_manager import SecurityManager
+
+masked, info = SecurityManager.mask_sensitive_data("Email: test@example.com")
+# 従来通りYAMLパターンファイルから読み込み、keyringでAPIキー管理
+```
+
+#### Cloudflare Workers デプロイ手順
+
+```toml
+# wrangler.toml
+[[kv_namespaces]]
+binding = "PII_PATTERNS"
+id = "your-pii-patterns-kv-id"
+
+[[kv_namespaces]]
+binding = "API_KEYS" 
+id = "your-api-keys-kv-id"
+```
+
+```bash
+# 暗号化キーの設定 (32バイトをBase64エンコード)
+wrangler secret put ENCRYPTION_KEY
+
+# デプロイ
+wrangler publish
+```
+
+---
+
 ## 🧪 テストの実行
 
-全1121件のユニットテスト・統合テストを実行します：
+全1325件のユニットテスト・統合テストを実行します：
 
 ```bash
 python -m pytest tests/ -v
 ```
 
-現在のテスト件数は1121件です。外部AI APIを使用するテストはモックで実行します。
+現在のテスト件数は1325件です。外部AI APIを使用するテストはモックで実行します。
 
 ---
 

@@ -744,3 +744,263 @@ class TestWebSocket:
             assert data["status"] == "connected"
             assert data["file_id"] == "test_file_id"
             assert data["progress"] == 0
+
+
+class TestCoverageGapsStep6:
+    """Step 6: web/app.py 未到達行のカバレッジテスト"""
+
+    # ---------- L82: serve_dashboard ----------
+    def test_serve_dashboard(self):
+        response = client.get("/")
+        assert response.status_code == 200
+
+    # ---------- L122-123: set_language ----------
+    def test_set_language_success(self):
+        with patch("src.web.app.i18n_manager") as mock_i18n:
+            mock_i18n.current_lang = "en"
+            response = client.post("/api/i18n/set", json={"language": "en"})
+            assert response.status_code == 200
+            assert response.json() == {"status": "ok", "language": "en"}
+            mock_i18n.set_language.assert_called_once_with("en")
+
+    # ---------- L250-273: process_pdf_api 成功系 ----------
+    @patch("src.web.app.DocumentProcessor")
+    @patch("src.web.app.config")
+    def test_process_pdf_success_with_options(self, mock_config, mock_doc_proc):
+        from src.web.app import UPLOADED_FILES, PROCESSING_RESULTS
+
+        file_id = "test_proc_success"
+        UPLOADED_FILES[file_id] = {
+            "file_id": file_id, "filename": "test.pdf",
+            "path": "/tmp/test_proc_success.pdf", "size_mb": 1.0,
+        }
+
+        mock_config.prompt_layout = None
+        mock_config.prompt_strict_mode = None
+        mock_config.prompt_has_diagrams = None
+        mock_config.prompt_low_quality_mode = None
+
+        expected_result = {"success": True, "output_files": {"pdf": "/tmp/out.pdf"}}
+        mock_processor_instance = MagicMock()
+        mock_processor_instance.process_pdf.return_value = expected_result
+        mock_doc_proc.return_value = mock_processor_instance
+
+        response = client.post(
+            f"/api/process/{file_id}",
+            json={
+                "compact_layout": True,
+                "use_emojis": True,
+                "prompt_layout": "horizontal",
+                "prompt_strict_mode": True,
+                "prompt_has_diagrams": True,
+                "prompt_low_quality_mode": True,
+            },
+        )
+        assert response.status_code == 200
+        assert response.json() == expected_result
+        assert PROCESSING_RESULTS[file_id] == expected_result
+
+        # オプションが設定へ反映されること
+        assert mock_config.prompt_layout == "horizontal"
+        assert mock_config.prompt_strict_mode is True
+        assert mock_config.prompt_has_diagrams is True
+        assert mock_config.prompt_low_quality_mode is True
+
+        mock_doc_proc.assert_called_once_with(mock_config)
+        _, kwargs = mock_processor_instance.process_pdf.call_args
+        assert kwargs["compact_layout"] is True
+        assert kwargs["use_emojis"] is True
+        assert kwargs["file_id"] == file_id
+
+    # ---------- L281: get_process_result 成功系 ----------
+    def test_get_process_result_success(self):
+        from src.web.app import PROCESSING_RESULTS
+
+        file_id = "test_result_found"
+        PROCESSING_RESULTS[file_id] = {"success": True, "title": "テスト"}
+
+        response = client.get(f"/api/results/{file_id}")
+        assert response.status_code == 200
+        assert response.json() == {"success": True, "title": "テスト"}
+
+    # ---------- L323-324: zip 生成時の None パス continue ----------
+    def test_download_all_zip_skips_none_paths(self, tmp_path):
+        from src.web.app import PROCESSING_RESULTS
+
+        file_id = "test_dl_none_skip"
+        md_file = tmp_path / "test.md"
+        md_file.write_text("# フローチャート\n", encoding="utf-8")
+        PROCESSING_RESULTS[file_id] = {
+            "output_files": {
+                "diagram": None,
+                "diagram_markdown": str(md_file),
+            }
+        }
+        response = client.get(f"/api/download/{file_id}/all")
+        assert response.status_code == 200
+        assert response.headers["content-type"] == "application/zip"
+
+    # ---------- L434-483: save_mermaid_and_rebuild 成功系 ----------
+    @patch("src.docx_generator.create_word_document")
+    @patch("src.pdf_generator.create_formatted_pdf")
+    @patch("src.web.app.DiagramGenerator")
+    @patch("src.web.app.config")
+    def test_save_mermaid_and_rebuild_success(self, mock_config, mock_dg_cls,
+                                              mock_pdf, mock_docx, tmp_path):
+        from src.web.app import PROCESSING_RESULTS
+
+        file_id = "test_save_mmd"
+        pdf_file = tmp_path / "out.pdf"
+        docx_file = tmp_path / "out.docx"
+        diagram_file = tmp_path / "diag.png"
+        PROCESSING_RESULTS[file_id] = {
+            "title": "テストマニュアル",
+            "summary": "概要テキスト",
+            "output_files": {
+                "pdf": str(pdf_file),
+                "docx": str(docx_file),
+                "diagram": str(diagram_file),
+            },
+        }
+
+        mock_config.generate_diagram_png = True
+        mock_config.generate_diagram_markdown = True
+        mock_config.generate_diagram_mermaid = True
+        mock_config.gemini_api_key = "test-key"
+        mock_config.output_directory = tmp_path
+
+        mock_dg_instance = MagicMock()
+        mock_dg_instance.render_to_image.return_value = diagram_file
+        mock_dg_cls.return_value = mock_dg_instance
+
+        response = client.post(
+            f"/api/mermaid/save/{file_id}",
+            json={"mermaid_code": "graph TD; A-->B;", "theme": "dark",
+                  "width": 800, "height": 600},
+        )
+        assert response.status_code == 200
+        data = response.json()
+        assert data["success"] is True
+        assert "diagram_markdown" in data
+        assert "diagram_mermaid" in data
+
+        mock_dg_cls.assert_called_once_with(api_key="test-key")
+        mock_dg_instance.render_to_image.assert_called_once()
+        mock_dg_instance.save_as_markdown.assert_called_once()
+        mock_dg_instance.save_as_mermaid.assert_called_once()
+        mock_pdf.assert_called_once()
+        mock_docx.assert_called_once()
+
+    # ---------- L484-486: save_mermaid_and_rebuild エラー系 ----------
+    @patch("src.web.app.DiagramGenerator")
+    @patch("src.web.app.config")
+    def test_save_mermaid_and_rebuild_error(self, mock_config, mock_dg_cls, tmp_path):
+        from src.web.app import PROCESSING_RESULTS
+
+        file_id = "test_save_mmd_err"
+        PROCESSING_RESULTS[file_id] = {"output_files": {}}
+
+        mock_config.generate_diagram_png = True
+        mock_config.gemini_api_key = "test-key"
+        mock_config.output_directory = tmp_path
+        mock_dg_cls.return_value.render_to_image.side_effect = Exception("Render failed")
+
+        response = client.post(
+            f"/api/mermaid/save/{file_id}",
+            json={"mermaid_code": "graph TD; A-->B;"},
+        )
+        assert response.status_code == 500
+        assert "再生成エラー" in response.json()["detail"]
+
+    # ---------- L491-496: _get_drive_manager ----------
+    @patch("src.web.app.GoogleDriveManager")
+    def test_get_drive_manager_with_credentials_path(self, mock_mgr_cls):
+        from src.web.app import _get_drive_manager
+
+        with patch("src.web.app.config") as mock_config:
+            mock_config.drive.credentials_path = "/tmp/custom_creds.json"
+            _get_drive_manager()
+            mock_mgr_cls.assert_called_once_with(
+                credentials_path=Path("/tmp/custom_creds.json"))
+
+    @patch("src.web.app.GoogleDriveManager")
+    def test_get_drive_manager_fallback_path(self, mock_mgr_cls):
+        from src.web.app import _get_drive_manager
+
+        with patch("src.web.app.config") as mock_config:
+            mock_config.drive.credentials_path = None
+            _get_drive_manager()
+            _, kwargs = mock_mgr_cls.call_args
+            assert kwargs["credentials_path"].name == "credentials.json"
+
+    # ---------- L563-566: フォルダ作成失敗時の警告 ----------
+    @patch("src.web.app._get_drive_manager")
+    def test_upload_to_drive_folder_creation_error(self, mock_get_manager, tmp_path):
+        from src.web.app import PROCESSING_RESULTS
+        from src.google_drive_manager import DriveFile
+
+        file_id = "test_drive_folder_err"
+        pdf_file = tmp_path / "test.pdf"
+        pdf_file.write_bytes(b"%PDF-1.4 content")
+        PROCESSING_RESULTS[file_id] = {"output_files": {"pdf": str(pdf_file)}}
+
+        mock_manager = MagicMock()
+        mock_manager.is_authenticated.return_value = True
+        mock_manager.create_folder.side_effect = Exception("Folder creation failed")
+        mock_manager.upload_and_share.return_value = DriveFile(
+            file_id="drive_1", name="test.pdf",
+            web_view_link="https://drive.google.com/view",
+            web_content_link="https://drive.google.com/content",
+            mime_type="application/pdf",
+        )
+        mock_get_manager.return_value = mock_manager
+
+        with patch("src.web.app.config") as mock_config:
+            mock_config.drive.folder_id = None
+            mock_config.drive.folder_name = "TestFolder"
+            mock_config.drive.share_public = True
+
+            response = client.post(f"/api/drive/upload/{file_id}")
+            assert response.status_code == 200
+            data = response.json()
+            assert data["success"] is True
+            assert data["drive_urls"]["pdf"]["file_id"] == "drive_1"
+
+    # ---------- L594-596: ファイルアップロード失敗時の警告 ----------
+    @patch("src.web.app._get_drive_manager")
+    def test_upload_to_drive_upload_error(self, mock_get_manager, tmp_path):
+        from src.web.app import PROCESSING_RESULTS
+
+        file_id = "test_drive_upload_err"
+        pdf_file = tmp_path / "test.pdf"
+        pdf_file.write_bytes(b"%PDF-1.4 content")
+        PROCESSING_RESULTS[file_id] = {"output_files": {"pdf": str(pdf_file)}}
+
+        mock_manager = MagicMock()
+        mock_manager.is_authenticated.return_value = True
+        mock_manager.upload_and_share.side_effect = Exception("Upload failed")
+        mock_get_manager.return_value = mock_manager
+
+        with patch("src.web.app.config") as mock_config:
+            mock_config.drive.folder_id = "folder_123"
+            mock_config.drive.share_public = True
+
+            response = client.post(f"/api/drive/upload/{file_id}")
+            assert response.status_code == 200
+            data = response.json()
+            assert data["success"] is True
+            assert data["drive_urls"]["pdf"] == {"error": "Upload failed"}
+
+    # ---------- L603-605: upload_to_drive 全体例外 ----------
+    @patch("src.web.app._get_drive_manager")
+    def test_upload_to_drive_general_error(self, mock_get_manager):
+        from src.web.app import PROCESSING_RESULTS
+
+        file_id = "test_drive_general_err"
+        PROCESSING_RESULTS[file_id] = {"output_files": {"pdf": "/tmp/test.pdf"}}
+
+        mock_get_manager.side_effect = Exception("Manager init failed")
+
+        response = client.post(f"/api/drive/upload/{file_id}")
+        assert response.status_code == 500
+        assert "アップロード失敗" in response.json()["detail"]
