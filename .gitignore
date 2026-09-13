@@ -149,3 +149,4 @@ manual_processor/=4.0.0
 manual_processor/新規 テキスト ドキュメント.txt
 manual_processor/coverage.xml
 manual_processor/.coverage*
+temp/
