@@ -1,7 +1,7 @@
 # 手書きマニュアル処理システム (Manual Processor) v3.1.0
 
 [![Python Version](https://img.shields.io/badge/python-3.8%2B-blue.svg)](https://www.python.org/)
-[![License](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
+
 [![Platform](https://img.shields.io/badge/platform-Windows%2010%2F11-win.svg)]()
 [![Tests](https://img.shields.io/badge/tests-1325%20passed-brightgreen.svg)]()
 [![Coverage](https://img.shields.io/badge/coverage-90%25-brightgreen.svg)](https://codecov.io/)
@@ -346,6 +346,3 @@ python -m pytest tests/ --cov=src --cov=config --cov-fail-under=90
 
 ---
 
-## 📝 ライセンス
-
-このプロジェクトは MIT ライセンスのもとで公開されています。

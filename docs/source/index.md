@@ -27,4 +27,4 @@ python -m uvicorn src.web.app:app --reload --port 8000
 | テスト数 | 543 passed |
 | カバレッジ | 67% (CIゲート 65%) |
 | 対応 Python | 3.8 - 3.12 |
-| ライセンス | MIT |
+| ライセンス | All rights reserved |

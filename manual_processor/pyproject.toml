@@ -7,7 +7,7 @@ name = "manual_processor"
 version = "3.1.0"
 description = "手書きマニュアル自動整理システム - AI-powered OCR and document processing"
 readme = "README.md"
-license = {text = "MIT"}
+
 requires-python = ">=3.8"
 authors = [
     {name = "Manual Processor Team"}
@@ -16,7 +16,7 @@ keywords = ["ocr", "pdf", "gemini", "handwriting", "manual-processing"]
 classifiers = [
     "Development Status :: 5 - Production/Stable",
     "Intended Audience :: Developers",
-    "License :: OSI Approved :: MIT License",
+    
     "Programming Language :: Python :: 3",
     "Programming Language :: Python :: 3.8",
     "Programming Language :: Python :: 3.9",
