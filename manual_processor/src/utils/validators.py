@@ -129,3 +129,64 @@ def validate_extension(filename: str, allowed_extensions: list) -> bool:
     ext = Path(filename).suffix.lower()
     allowed = [e.lower() if e.startswith(".") else f".{e.lower()}" for e in allowed_extensions]
     return ext in allowed
+
+
+def sanitize_filename(filename: str) -> str:
+    """
+    Sanitize filename to prevent path traversal and unsafe characters.
+    
+    Args:
+        filename: Original filename (may contain path components)
+        
+    Returns:
+        Sanitized filename safe for filesystem use
+    """
+    if not filename or not isinstance(filename, str):
+        return "upload"
+    
+    # Get basename to prevent path traversal
+    basename = Path(filename).name
+    
+    # If basename is empty after extracting, use default
+    if not basename:
+        basename = "upload"
+    
+    # Replace dangerous characters with underscore
+    # Keep alphanumeric, Japanese/Korean/Chinese characters, dots, hyphens, underscores, spaces
+    # Remove control characters, path separators, and other dangerous chars
+    import re
+    # Replace control characters (0x00-0x1f, 0x7f), path separators, and null bytes
+    sanitized = re.sub(r'[\x00-\x1f\x7f\\/:*?"<>|]', '_', basename)
+    
+    # Remove leading/trailing dots and spaces (but keep internal ones)
+    sanitized = sanitized.strip('. ')
+    
+    # Ensure not empty after stripping
+    if not sanitized:
+        sanitized = "upload"
+    
+    # Limit length to 255 bytes (typical filesystem limit)
+    # Handle multi-byte characters by checking byte length
+    if len(sanitized.encode('utf-8')) > 255:
+        # Truncate by characters until under 255 bytes
+        for i in range(len(sanitized), 0, -1):
+            if len(sanitized[:i].encode('utf-8')) <= 255:
+                sanitized = sanitized[:i]
+                break
+        # If still too long (shouldn't happen), force truncate
+        if len(sanitized.encode('utf-8')) > 255:
+            sanitized = sanitized[:255]
+    
+    # Ensure extension is preserved if possible
+    # Extract extension from original basename if it's safe
+    original_ext = Path(basename).suffix.lower()
+    # Only keep extension if it's alphanumeric + dot and reasonable length
+    if original_ext and len(original_ext) <= 10 and all(c.isalnum() or c == '.' for c in original_ext):
+        # If our sanitized version doesn't end with this extension, add it
+        if not sanitized.lower().endswith(original_ext):
+            # Remove any existing extension from sanitized
+            stem = Path(sanitized).stem
+            sanitized = stem + original_ext
+    # If no safe extension, default to .pdf for uploads (but caller should enforce)
+    
+    return sanitized

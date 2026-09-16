@@ -1,0 +1,1048 @@
+openapi: 3.0.3
+info:
+  title: Manual Processor API
+  description: API for the Manual Processor - Handwritten Manual Processing System
+  version: 3.1.0
+  contact:
+    name: Manual Processor Team
+    url: https://github.com/your-organization/manual-processor
+servers:
+  - url: https://manual-processor.pages.dev
+    description: Production server
+  - url: https://manual-processor-preview.pages.dev
+    description: Preview server
+  - url: http://localhost:8788
+    description: Local development server
+paths:
+  /api/health:
+    get:
+      summary: Health check endpoint
+      description: Returns the health status of the API
+      operationId: healthCheck
+      responses:
+        '200':
+          description: Successful response
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: ok
+                  service:
+                    type: string
+                    example: edge-worker
+                  version:
+                    type: string
+                    example: 3.1.0
+                  timestamp:
+                    type: string
+                    format: date-time
+                    example: 2026-09-14T04:00:39Z
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: string
+                    example: Internal server error
+  /api/config:
+    get:
+      summary: Get public configuration
+      description: Returns non-sensitive configuration information
+      operationId: getConfig
+      responses:
+        '200':
+          description: Successful response
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  gemini_model_name:
+                    type: string
+                    example: gemini-1.5-flash
+                  processor_type:
+                    type: string
+                    example: gemini
+                  pdf_dpi:
+                    type: integer
+                    example: 300
+                  max_file_size_mb:
+                    type: integer
+                    example: 100
+                  web_upload_max_mb:
+                    type: integer
+                    example: 100
+                  output_directory:
+                    type: string
+                    example: /tmp/output
+                  supported_extensions:
+                    type: array
+                    items:
+                      type: string
+                    example: [".pdf"]
+                  default_language:
+                    type: string
+                    example: ja
+        '500':
+          description: Internal server error
+  /api/i18n/languages:
+    get:
+      summary: Get available languages
+      description: Returns list of available languages for internationalization
+      operationId: getLanguages
+      responses:
+        '200':
+          description: Successful response
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  languages:
+                    type: array
+                    items:
+                      type: string
+                    example: ["ja", "en", "zh", "ko", "es", "fr", "de"]
+                  current:
+                    type: string
+                    example: ja
+        '500':
+          description: Internal server error
+  /api/i18n/translations/{lang}:
+    get:
+      summary: Get translations for a language
+      description: Returns translation strings for the specified language
+      operationId: getTranslations
+      parameters:
+        - name: lang
+          in: path
+          required: true
+          description: Language code (ja, en, etc.)
+          schema:
+            type: string
+            enum: [ja, en, zh, ko, es, fr, de]
+      responses:
+        '200':
+          description: Successful response
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties:
+                  type: string
+        '404':
+          description: Language not found
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: string
+                    example: Language 'xx' not found
+        '500':
+          description: Internal server error
+  /api/i18n/set:
+    post:
+      summary: Set current language
+      description: Sets the current language for internationalization
+      operationId: setLanguage
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - language
+              properties:
+                language:
+                  type: string
+                  enum: [ja, en, zh, ko, es, fr, de]
+                  description: Language code to set
+      responses:
+        '200':
+          description: Successful response
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: ok
+                  language:
+                    type: string
+                    example: en
+        '400':
+          description: Invalid request
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: string
+                    example: Invalid request: ...
+        '500':
+          description: Internal server error
+  /api/i18n/detect:
+    post:
+      summary: Detect language from text
+      description: Detects the language of the provided text
+      operationId: detectLanguage
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - text
+              properties:
+                text:
+                  type: string
+                  description: Text to analyze for language detection
+                  example: これはテキストです。
+      responses:
+        '200':
+          description: Successful response
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  detected_language:
+                    type: string
+                    example: ja
+        '400':
+          description: Invalid request
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: string
+                    example: Invalid request: ...
+        '500':
+          description: Internal server error
+  /api/upload:
+    post:
+      summary: Upload a PDF file
+      description: Uploads a PDF file for processing
+      operationId: uploadFile
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required:
+                - file
+              properties:
+                file:
+                  type: string
+                  format: binary
+                  description: The PDF file to upload
+      responses:
+        '200':
+          description: Successful upload
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  key:
+                    type: string
+                    example: uploads/a1b2c3d4e5f6g7h8i9j0k1l2m3n4o5p6/test.pdf
+                  bucket:
+                    type: string
+                    example: manual-processor-files
+                  size:
+                    type: integer
+                    example: 102400
+                  content_type:
+                    type: string
+                    example: application/pdf
+                  url:
+                    type: string
+                    example: https://pub-xxxxxxxx.r2.dev/uploads/a1b2c3d4e5f6g7h8i9j0k1l2m3n4o5p6/test.pdf
+                  file_id:
+                    type: string
+                    example: a1b2c3d4e5f6g7h8i9j0k1l2m3n4o5p6
+                  filename:
+                    type: string
+                    example: test.pdf
+                  size_mb:
+                    type: number
+                    example: 0.1
+        '400':
+          description: Invalid file or request
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: string
+                    example: ファイルが指定されていません。
+        '500':
+          description: Internal server error
+  /api/uploads:
+    get:
+      summary: List uploaded files
+      description: Returns a list of all uploaded files
+      operationId: listUploads
+      responses:
+        '200':
+          description: Successful response
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  uploads:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        file_id:
+                          type: string
+                        filename:
+                          type: string
+                        size_mb:
+                          type: number
+                        path:
+                          type: string
+                        uploaded_at:
+                          type: string
+                          format: date-time
+        '500':
+          description: Internal server error
+  /api/upload/{file_id}:
+    delete:
+      summary: Delete uploaded file
+      description: Deletes an uploaded file and associated data
+      operationId: deleteUpload
+      parameters:
+        - name: file_id
+          in: path
+          required: true
+          description: The file ID to delete
+          schema:
+            type: string
+            pattern: '^[a-f0-9]{32}$'
+      responses:
+        '200':
+          description: Successful deletion
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: true
+                  file_id:
+                    type: string
+                    example: a1b2c3d4e5f6g7h8i9j0k1l2m3n4o5p6
+        '400':
+          description: Invalid file ID
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: string
+                    example: Invalid file_id format
+        '500':
+          description: Internal server error
+  /api/process/{file_id}:
+    post:
+      summary: Start processing a PDF file
+      description: Starts the processing pipeline for an uploaded PDF file
+      operationId: processPdf
+      parameters:
+        - name: file_id
+          in: path
+          required: true
+          description: The file ID of the uploaded PDF
+          schema:
+            type: string
+            pattern: '^[a-f0-9]{32}$'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                compact_layout:
+                  type: boolean
+                  description: Whether to use compact layout (reduced margins)
+                  default: false
+                use_emojis:
+                  type: boolean
+                  description: Whether to use emojis in headings
+                  default: false
+                prompt_layout:
+                  type: string
+                  enum: [horizontal, vertical]
+                  description: Text layout direction
+                  default: horizontal
+                prompt_strict_mode:
+                  type: boolean
+                  description: Whether to use strict transcription rules
+                  default: true
+                prompt_has_diagrams:
+                  type: boolean
+                  description: Whether the document contains diagrams
+                  default: false
+                prompt_low_quality_mode:
+                  type: boolean
+                  description: Whether to use low quality processing mode
+                  default: false
+                base_url:
+                  type: string
+                  description: Base URL for constructing absolute URLs
+                  default: https://manual-processor.pages.dev
+      responses:
+        '200':
+          description: Processing queued successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: true
+                  file_id:
+                    type: string
+                    example: a1b2c3d4e5f6g7h8i9j0k1l2m3n4o5p6
+                  status:
+                    type: string
+                    example: queued
+                  message:
+                    type: string
+                    example: 処理がキューに追加されました。進捗は WebSocket で確認できます。
+        '400':
+          description: Invalid request or file ID
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: string
+                    example: 指定された file_id が存在しません。
+        '500':
+          description: Internal server error
+        '503':
+          description: Service unavailable (queue not configured)
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: string
+                    example: Queue not configured. Please bind PDF_QUEUE in wrangler.toml
+  /api/results/{file_id}:
+    get:
+      summary: Get processing results
+      description: Returns the processing results for a file
+      operationId: getResult
+      parameters:
+        - name: file_id
+          in: path
+          required: true
+          description: The file ID to get results for
+          schema:
+            type: string
+            pattern: '^[a-f0-9]{32}$'
+      responses:
+        '200':
+          description: Successful response
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                  file_id:
+                    type: string
+                  title:
+                    type: string
+                  summary:
+                    type: string
+                  key_points:
+                    type: array
+                    items:
+                      type: string
+                  output_files:
+                    type: object
+                    additionalProperties:
+                      type: string
+                example:
+                  success: true
+                  file_id: a1b2c3d4e5f6g7h8i9j0k1l2m3n4o5p6
+                  title: テストマニュアル
+                  summary: これはテスト用のマニュアルです。
+                  key_points:
+                    - 重要ポイント1
+                    - 重要ポイント2
+                    - 重要ポイント3
+                  output_files:
+                    pdf: results/a1b2c3d4e5f6g7h8i9j0k1l2m3n4o5p6/pdf/document_a1b2c3d4e5f6g7h8i9j0k1l2m3n4o5p6.pdf
+                    docx: results/a1b2c3d4e5f6g7h8i9j0k1l2m3n4o5p6/docx/document_a1b2c3d4e5f6g7h8i9j0k1l2m3n4o5p6.docx
+                    audio: results/a1b2c3d4e5f6g7h8i9j0k1l2m3n4o5p6/audio/audio_a1b2c3d4e5f6g7h8i9j0k1l2m3n4o5p6.mp3
+                    diagram: results/a1b2c3d4e5f6g7h8i9j0k1l2m3n4o5p6/diagram/diagram_a1b2c3d4e5f6g7h8i9j0k1l2m3n4o5p6.png
+                    diagram_markdown: results/a1b2c3d4e5f6g7h8i9j0k1l2m3n4o5p6/diagram_markdown/diagram_a1b2c3d4e5f6g7h8i9j0k1l2m3n4o5p6.md
+                    diagram_mermaid: results/a1b2c3d4e5f6g7h8i9j0k1l2m3n4o5p6/diagram_mermaid/diagram_a1b2c3d4e5f6g7h8i9j0k1l2m3n4o5p6.mmd
+        '404':
+          description: Results not found
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: string
+                    example: 処理結果が見つかりません。
+        '500':
+          description: Internal server error
+  /api/download/{file_id}/{file_type}:
+    get:
+      summary: Download generated files
+      description: Downloads generated files (PDF, DOCX, audio, diagrams, etc.)
+      operationId: downloadFile
+      parameters:
+        - name: file_id
+          in: path
+          required: true
+          description: The file ID
+          schema:
+            type: string
+            pattern: '^[a-f0-9]{32}$'
+        - name: file_type
+          in: path
+          required: true
+          description: The type of file to download
+          schema:
+            type: string
+            enum: [pdf, docx, audio, diagram, diagram_markdown, diagram_mermaid, qr, all]
+      responses:
+        '200':
+          description: Successful file download
+          content:
+            application/octet-stream:
+              schema:
+                type: string
+                format: binary
+            headers:
+              Content-Disposition:
+                description: The filename for the download
+                schema:
+                  type: string
+                  example: attachment; filename="document_a1b2c3d4e5f6g7h8i9j0k1l2m3n4o5p6.pdf"
+              Content-Type:
+                description: The MIME type of the file
+                schema:
+                  type: string
+                  example: application/pdf
+        '404':
+          description: File not found
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: string
+                    example: 処理結果が見つかりません。
+        '500':
+          description: Internal server error
+  /api/security/status:
+    get:
+      summary: Get security configuration status
+      description: Returns the current security configuration status
+      operationId: getSecurityStatus
+      responses:
+        '200':
+          description: Successful response
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  pii_masking_enabled:
+                    type: boolean
+                    example: false
+                  encryption_available:
+                    type: boolean
+                    example: true
+                  encryption_key_set:
+                    type: boolean
+                    example: false
+                  keyring_available:
+                    type: boolean
+                    example: true
+                  audit_log_enabled:
+                    type: boolean
+                    example: true
+        '500':
+          description: Internal server error
+  /api/security/audit:
+    get:
+      summary: Get audit logs
+      description: Returns audit log entries
+      operationId: getAuditLogs
+      parameters:
+        - name: limit
+          in: query
+          required: false
+          description: Maximum number of log entries to return
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 1000
+            default: 100
+      responses:
+        '200':
+          description: Successful response
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  logs:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        timestamp:
+                          type: string
+                          format: date-time
+                        level:
+                          type: string
+                          example: INFO
+                        message:
+                          type: string
+                  count:
+                    type: integer
+                    example: 25
+        '500':
+          description: Internal server error
+  /api/security/mask:
+    post:
+      summary: Mask sensitive data in text
+      description: Masks personally identifiable information (PII) in the provided text
+      operationId: maskText
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - text
+              properties:
+                text:
+                  type: string
+                  description: Text to mask for PII
+                  example: 私の電話番号は090-1234-5678です。
+      responses:
+        '200':
+          description: Successful response
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  masked_text:
+                    type: string
+                    example: 私の電話番号は[マスク済み]です。
+                  counts:
+                    type: object
+                    additionalProperties:
+                      type: integer
+                    example:
+                      phone_number: 1
+                  positions_count:
+                    type: integer
+                    example: 1
+        '400':
+          description: Invalid request
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: string
+                    example: Invalid request: ...
+        '500':
+          description: Internal server error
+  /api/drive/status:
+    get:
+      summary: Get Google Drive status
+      description: Returns the Google Drive authentication and configuration status
+      operationId: getDriveStatus
+      responses:
+        '200':
+          description: Successful response
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  authenticated:
+                    type: boolean
+                    example: false
+                  enabled:
+                    type: boolean
+                    example: false
+        '500':
+          description: Internal server error
+  /api/drive/auth:
+    get:
+      summary: Get Google Drive authentication URL
+      description: Returns the URL for Google Drive OAuth2 authentication
+      operationId: getDriveAuthUrl
+      responses:
+        '200':
+          description: Successful response
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  auth_url:
+                    type: string
+                    format: uri
+                    example: https://accounts.google.com/o/oauth2/auth?client_id=...
+        '500':
+          description: Internal server error
+  /api/drive/callback:
+    get:
+      summary: Google Drive OAuth2 callback
+      description: Handles the Google Drive OAuth2 callback after user authentication
+      operationId: driveCallback
+      parameters:
+        - name: code
+          in: query
+          required: true
+          description: The authorization code from Google
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Successful authentication
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: ok
+                  message:
+                    type: string
+                    example: 認証成功
+                  token_info:
+                    type: object
+                    additionalProperties:
+                      type: string
+        '400':
+          description: Missing or invalid authorization code
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: string
+                    example: 認証コードがありません
+        '500':
+          description: Internal server error
+  /api/drive/upload/{file_id}:
+    post:
+      summary: Upload processing results to Google Drive
+      description: Uploads the processing results to Google Drive
+      operationId: driveUpload
+      parameters:
+        - name: file_id
+          in: path
+          required: true
+          description: The file ID of the processed document
+          schema:
+            type: string
+            pattern: '^[a-f0-9]{32}$'
+      responses:
+        '200':
+          description: Successful upload to Google Drive
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: true
+                  drive_urls:
+                    type: object
+                    additionalProperties:
+                      type: object
+                      properties:
+                        file_id:
+                          type: string
+                        web_view_link:
+                          type: string
+                          format: uri
+                        web_content_link:
+                          type: string
+                          format: uri
+                    example:
+                      pdf:
+                        file_id: 1xYz...
+                        web_view_link: https://drive.google.com/file/d/1xYz.../view
+                        web_content_link: https://drive.google.com/uc?id=1xYz...
+        '401':
+          description: Not authenticated with Google Drive
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: string
+                    example: Googleドライブに認証されていません。
+        '500':
+          description: Internal server error
+  /api/drive/revoke:
+    post:
+      summary: Revoke Google Drive authentication
+      description: Revokes the Google Drive authentication
+      operationId: driveRevoke
+      responses:
+        '200':
+          description: Successful response
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: ok
+                  message:
+                    type: string
+                    example: 認証を解除しました
+        '500':
+          description: Internal server error
+  /metrics:
+    get:
+      summary: Get Prometheus metrics
+      description: Returns Prometheus-formatted metrics for monitoring
+      operationId: getMetrics
+      produces:
+        - text/plain
+      responses:
+        '200':
+          description: Successful response
+          content:
+            text/plain:
+              schema:
+                type: string
+                example: |
+                  # HELP http_requests_total Total HTTP requests
+                  # TYPE http_requests_total counter
+                  http_requests_total{method="GET",endpoint="/api/health"} 42
+        '500':
+          description: Internal server error
+  /api/observability/status:
+    get:
+      summary: Get observability status
+      description: Returns the status of the observability/monitoring systems
+      operationId: getObservabilityStatus
+      responses:
+        '200':
+          description: Successful response
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  enabled:
+                    type: boolean
+                    example: true
+                  backend:
+                    type: string
+                    example: prometheus_client
+        '500':
+          description: Internal server error
+
+components:
+  schemas:
+    ErrorResponse:
+      type: object
+      properties:
+        error:
+          type: string
+          description: Error message
+        code:
+          type: string
+          description: Error code
+        details:
+          type: object
+          description: Additional error details
+        request_id:
+          type: string
+          description: Unique request identifier for tracing
+    HealthResponse:
+      type: object
+      properties:
+        status:
+          type: string
+          example: ok
+        service:
+          type: string
+          example: edge-worker
+        version:
+          type: string
+          example: 3.1.0
+        timestamp:
+          type: string
+          format: date-time
+          example: 2026-09-14T04:00:39Z
+    ProcessingOptions:
+      type: object
+      properties:
+        compact_layout:
+          type: boolean
+          description: Whether to use compact layout (reduced margins)
+          default: false
+        use_emojis:
+          type: boolean
+          description: Whether to use emojis in headings
+          default: false
+        prompt_layout:
+          type: string
+          enum: [horizontal, vertical]
+          description: Text layout direction
+          default: horizontal
+        prompt_strict_mode:
+          type: boolean
+          description: Whether to use strict transcription rules
+          default: true
+        prompt_has_diagrams:
+          type: boolean
+          description: Whether the document contains diagrams
+          default: false
+        prompt_low_quality_mode:
+          type: boolean
+          description: Whether to use low quality processing mode
+          default: false
+        base_url:
+          type: string
+          description: Base URL for constructing absolute URLs
+          default: https://manual-processor.pages.dev
+    ProgressUpdate:
+      type: object
+      properties:
+        status:
+          type: string
+          enum: [pending, queued, processing, completed, error]
+          description: Current processing status
+        progress:
+          type: number
+          minimum: 0
+          maximum: 100
+          description: Processing progress percentage
+        stage:
+          type: string
+          description: Current processing stage description
+        result:
+          type: object
+          description: Processing result data (when status is completed)
+        error:
+          type: string
+          description: Error message (when status is error)
+        processing_time_ms:
+          type: number
+          description: Processing time in milliseconds
+    FileUploadResponse:
+      type: object
+      properties:
+        key:
+          type: string
+          description: Object key in R2 storage
+        bucket:
+          type: string
+          description: R2 bucket name
+        size:
+          type: integer
+          description: File size in bytes
+        content_type:
+          type: string
+          description: MIME type of the file
+        url:
+          type: string
+          format: uri
+          description: Public URL to access the file
+        file_id:
+          type: string
+          description: Unique identifier for the uploaded file
+        filename:
+          type: string
+          description: Original filename of the uploaded file
+        size_mb:
+          type: number
+          description: File size in megabytes
+    ProcessingResult:
+      type: object
+      properties:
+        success:
+          type: boolean
+          description: Whether processing was successful
+        file_id:
+          type: string
+          description: Unique identifier for the processed file
+        title:
+          type: string
+          description: Title of the processed document
+        summary:
+          type: string
+          description: Summary of the processed document
+        key_points:
+          type: array
+          items:
+            type: string
+          description: Key points extracted from the document
+        output_files:
+          type: object
+          additionalProperties:
+            type: string
+          description: Mapping of file types to their storage paths
+        error:
+          type: string
+          description: Error message (if success is false)
+security:
+  - apiKey: []
+components:
+  securitySchemes:
+    apiKey:
+      type: apiKey
+      in: header
+      name: Authorization
+      description: JWT token for authentication

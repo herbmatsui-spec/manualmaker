@@ -49,14 +49,15 @@ def main():
             # Run the test module
             if test_module == "test_health_config":
                 from tests.integration import test_health_config
-                test_health_config.TestHealthConfig().setup_method()
-                test_health_config.TestHealthConfig().test_health_endpoint_returns_200()
-                test_health_config.TestHealthConfig().test_health_endpoint_structure()
-                test_health_config.TestHealthConfig().test_config_endpoint_exists()
-                test_health_config.TestHealthConfig().test_i18n_languages_endpoint_exists()
-                test_health_config.TestHealthConfig().test_i18n_translations_endpoint_exists()
-                test_health_config.TestHealthConfig().test_set_language_endpoint_exists()
-                test_health_config.TestHealthConfig().test_detect_language_endpoint_exists()
+                test_instance = test_health_config.TestHealthConfig()
+                test_instance.setup_method()
+                test_instance.test_health_endpoint_returns_200()
+                test_instance.test_health_endpoint_structure()
+                test_instance.test_config_endpoint_exists()
+                test_instance.test_i18n_languages_endpoint_exists()
+                test_instance.test_i18n_translations_endpoint_exists()
+                test_instance.test_set_language_endpoint_exists()
+                test_instance.test_detect_language_endpoint_exists()
                 print("  ✓ All health/config tests passed")
                 
             elif test_module == "test_file_upload_download":

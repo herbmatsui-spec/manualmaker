@@ -15,7 +15,7 @@ from pydantic import BaseModel
 from config.config import Config
 from src.i18n_manager import I18nManager
 from src.security_manager import SecurityManager, AuditLogger
-from src.utils.validators import validate_pdf_content, validate_extension
+from src.utils.validators import validate_pdf_content, validate_extension, sanitize_filename
 from src.google_drive_manager import GoogleDriveManager, GoogleDriveError, DriveFile
 
 logger = logging.getLogger(__name__)
@@ -192,6 +192,12 @@ async def upload_file(file: UploadFile = File(...)) -> Dict[str, Any]:
     if not validate_extension(file.filename, [".pdf"]):
         raise HTTPException(status_code=400, detail="PDF ファイルのみアップロード可能です。")
     
+    # ファイル名をサニタイズ（パストラバーサル対策）
+    safe_filename = sanitize_filename(file.filename)
+    # PDF拡張子を保証
+    if not safe_filename.lower().endswith('.pdf'):
+        safe_filename += '.pdf'
+    
     # Content-Type チェック
     content_type = file.content_type or ""
     if content_type != "application/pdf":
@@ -214,14 +220,15 @@ async def upload_file(file: UploadFile = File(...)) -> Dict[str, Any]:
     file_id = uuid.uuid4().hex
     save_dir = config.temp_directory / file_id
     save_dir.mkdir(parents=True, exist_ok=True)
-    file_path = save_dir / file.filename
-
+    file_path = save_dir / safe_filename
+    
     with open(file_path, "wb") as f:
         f.write(file_bytes)
     
     meta = {
         "file_id": file_id,
         "filename": file.filename,
+        "stored_filename": safe_filename,
         "size_mb": round(size_mb, 2),
         "path": str(file_path)
     }

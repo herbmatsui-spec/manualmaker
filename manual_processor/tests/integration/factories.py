@@ -6,7 +6,7 @@ import random
 import string
 from datetime import datetime, timedelta
 from typing import Dict, Any, List, Optional
-from .mock_services import TestDataFactory
+from .utils.mock_services import TestDataFactory
 
 
 class FileIdFactory(factory.Factory):
