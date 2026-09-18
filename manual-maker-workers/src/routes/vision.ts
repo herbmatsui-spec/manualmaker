@@ -3,34 +3,34 @@
  * For handwritten OCR - image annotation
  */
 import { Hono } from 'hono';
-import type { Env } from '../lib/types';
+import type { AppEnv } from '../lib/types';
+import { fetchWithRetry } from '../lib/http-client';
+import { ExternalAPIError, ValidationError } from '../lib/errors';
+import { validate, getValidatedBody } from '../lib/validation';
+import { z } from 'zod';
+import { visionProxyBody } from '../lib/schemas';
+import { rateLimitVisionProxy } from '../lib/rate-limit-middleware';
 
 const VISION_API_BASE = 'https://vision.googleapis.com/v1';
 
-export function registerVisionRoutes(app: Hono<{ Bindings: Env }>) {
+export function registerVisionRoutes(app: Hono<AppEnv>) {
   /**
    * POST /api/vision/annotate
    * Body: { requests: [{ image: { content: base64 }, features: [...] }] }
    */
-  app.post('/api/vision/annotate', async (c) => {
-    try {
+  app.post('/api/vision/annotate',
+    rateLimitVisionProxy(),
+    bodyLimit({ maxSize: 10 * 1024 * 1024 }), // 10MB as per C2 plan
+    validate({ body: visionProxyBody }),
+    async (c) => {
       const apiKey = c.env.GOOGLE_API_KEY;
       if (!apiKey) {
-        return c.json({ error: 'GOOGLE_API_KEY not configured' }, 503);
+        throw new ExternalAPIError('vision', 'GOOGLE_API_KEY not configured', undefined, 503);
       }
 
-      const body = await c.req.json();
+      const body = getValidatedBody<{ requests: Array<{ image: { content: string }; features: Array<{ type: string; maxResults?: number }> }> }>(c);
 
-      // Basic validation
-      if (!body.requests || !Array.isArray(body.requests)) {
-        return c.json({ error: 'Invalid request format: requests array required' }, 400);
-      }
-
-      if (body.requests.length > 16) {
-        return c.json({ error: 'Too many requests (max 16 per batch)' }, 400);
-      }
-
-      const response = await fetch(`${VISION_API_BASE}/images:annotate`, {
+      const response = await fetchWithRetry(`${VISION_API_BASE}/images:annotate`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -41,18 +41,11 @@ export function registerVisionRoutes(app: Hono<{ Bindings: Env }>) {
 
       if (!response.ok) {
         const errorText = await response.text();
-        console.error(`Vision API error (${response.status}):`, errorText.slice(0, 500));
-        return c.json(
-          { error: 'Vision API error', status: response.status },
-          response.status === 429 ? 429 : 502
-        );
+        throw new ExternalAPIError('vision', `Vision API error: ${errorText.slice(0, 500)}`, response.status);
       }
 
       const result = await response.json();
       return c.json(result);
-    } catch (error) {
-      console.error('Vision proxy error:', error);
-      return c.json({ error: 'Proxy failed' }, 500);
     }
-  });
+  );
 }
