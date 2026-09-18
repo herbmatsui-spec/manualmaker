@@ -146,8 +146,8 @@ export function registerSecurityRoutes(app: OpenAPIHono<AppEnv>) {
       }
       try {
         // Try KV for custom patterns, fallback to hardcoded
-        let patterns: Array<{pattern: string; label: string; replacement: string>};
-        let source: 'kv' | 'default';
+        let patterns: Array<{pattern: string; label: string; replacement: string>> = [];
+        let source: 'kv' | 'default' = 'default';
         if (c.env.PROCESSING_KV) {
           const custom = await c.env.PROCESSING_KV.get('pii_patterns', 'json');
           if (custom && Array.isArray((custom as any).patterns)) {
@@ -169,7 +169,7 @@ export function registerSecurityRoutes(app: OpenAPIHono<AppEnv>) {
         console.error(`[${requestId}] Get patterns error:`, error);
         const patterns = DEFAULT_PII_PATTERNS;
         const source = 'default';
-caches.piiPatterns.set('pii_patterns', { patterns, source });
+        caches.piiPatterns.set('pii_patterns', { patterns, source });
       }
 
   /**
@@ -252,5 +252,5 @@ caches.piiPatterns.set('pii_patterns', { patterns, source });
         }
       }
 
-return c.json({ maskedText, counts });
+      return c.json({ maskedText, counts });
     }
