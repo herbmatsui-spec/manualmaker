@@ -2,94 +2,86 @@
  * Results routes - save/fetch processing results (markdown)
  */
 import { Hono } from 'hono';
-import type { Env } from '../lib/types';
+import type { AppEnv } from '../lib/types';
 import { validateFileId } from '../lib/utils';
+import { ValidationError, NotFoundError } from '../lib/errors';
+import { validate, getValidatedBody, getValidatedParams } from '../lib/validation';
+import { z } from 'zod';
+import { openapiFileIdParam, openapiResultSaveBody } from '../lib/openapi-schemas';
 
-export function registerResultsRoutes(app: Hono<{ Bindings: Env }>) {
+export function registerResultsRoutes(app: Hono<AppEnv>) {
   /**
    * POST /api/results/:fileId
    * Save processing result (markdown text) to R2 + KV metadata
    */
-  app.post('/api/results/:fileId', async (c) => {
-    try {
-      const fileId = c.req.param('fileId');
-      if (!validateFileId(fileId)) {
-        return c.json({ error: 'Invalid fileId format' }, 400);
+  app.post('/api/results/:fileId',
+    validate({
+      params: openapiFileIdParam,
+      body: openapiResultSaveBody
+    }),
+    bodyLimit({ maxSize: 12 * 1024 * 1024 }), // 12MB to accommodate JSON overhead
+    async (c) => {
+    const { fileId } = getValidatedParams<{ fileId: string }>(c);
+    const { markdown, title } = getValidatedBody<{ markdown: string; title?: string }>(c);
+
+    // Save markdown to R2
+    const key = `results/${fileId}/manual.md`;
+    await c.env.BUCKET.put(key, markdown, {
+      httpMetadata: {
+        contentType: 'text/markdown; charset=utf-8'
       }
+    });
 
-      const body = await c.req.json();
-      if (typeof body.markdown !== 'string' || body.markdown.length === 0) {
-        return c.json({ error: 'markdown field is required' }, 400);
-      }
+    // Update KV metadata
+    const resultMeta = {
+      fileId,
+      path: key,
+      size: markdown.length,
+      title: typeof title === 'string' ? title.slice(0, 300) : '',
+      savedAt: new Date().toISOString()
+    };
+    await c.env.PROCESSING_KV.put(`result:${fileId}`, JSON.stringify(resultMeta));
 
-      if (body.markdown.length > 10 * 1024 * 1024) {
-        return c.json({ error: 'Result too large (max 10MB)' }, 413);
-      }
-
-      // Save markdown to R2
-      const key = `results/${fileId}/manual.md`;
-      await c.env.BUCKET.put(key, body.markdown, {
-        httpMetadata: {
-          contentType: 'text/markdown; charset=utf-8'
-        }
-      });
-
-      // Update KV metadata
-      const resultMeta = {
-        fileId,
-        path: key,
-        size: body.markdown.length,
-        title: typeof body.title === 'string' ? body.title.slice(0, 300) : '',
-        savedAt: new Date().toISOString()
-      };
-      await c.env.PROCESSING_KV.put(`result:${fileId}`, JSON.stringify(resultMeta));
-
-      // Mark process as completed
-      const processJson = await c.env.PROCESSING_KV.get(`process:${fileId}`);
-      if (processJson) {
-        const processState = JSON.parse(processJson);
-        processState.status = 'completed';
-        processState.progress = 100;
-        processState.stage = '完了';
-        processState.completedAt = new Date().toISOString();
-        await c.env.PROCESSING_KV.put(`process:${fileId}`, JSON.stringify(processState));
-      }
-
-      return c.json({ success: true, fileId, path: key });
-    } catch (error) {
-      console.error('Save result error:', error);
-      return c.json({ error: 'Failed to save result' }, 500);
+    // Mark process as completed
+    const processJson = await c.env.PROCESSING_KV.get(`process:${fileId}`);
+    if (processJson) {
+      const processState = JSON.parse(processJson);
+      processState.status = 'completed';
+      processState.progress = 100;
+      processState.stage = '完了';
+      processState.completedAt = new Date().toISOString();
+      await c.env.PROCESSING_KV.put(`process:${fileId}`, JSON.stringify(processState));
     }
-  });
+
+    return c.json({ success: true, fileId, path: key });
+  }
+);
 
   /**
    * GET /api/results/:fileId
    * Get result metadata + markdown content
    */
-  app.get('/api/results/:fileId', async (c) => {
-    try {
-      const fileId = c.req.param('fileId');
-      if (!validateFileId(fileId)) {
-        return c.json({ error: 'Invalid fileId format' }, 400);
-      }
+app.get('/api/results/:fileId',
+   validate({
+     params: openapiFileIdParam
+   }),
+   async (c) => {
+    const { fileId } = getValidatedParams<{ fileId: string }>(c);
 
-      const metaJson = await c.env.PROCESSING_KV.get(`result:${fileId}`);
-      if (!metaJson) {
-        return c.json({ error: 'Result not found' }, 404);
-      }
-
-      const meta = JSON.parse(metaJson);
-      const obj = await c.env.BUCKET.get(meta.path);
-      if (!obj) {
-        return c.json({ error: 'Result file not found in storage' }, 404);
-      }
-
-      const markdown = await obj.text();
-
-      return c.json({ ...meta, markdown });
-    } catch (error) {
-      console.error('Get result error:', error);
-      return c.json({ error: 'Failed to get result' }, 500);
+    const metaJson = await c.env.PROCESSING_KV.get(`result:${fileId}`);
+    if (!metaJson) {
+      throw new NotFoundError('Result');
     }
-  });
+
+    const meta = JSON.parse(metaJson);
+    const obj = await c.env.BUCKET.get(meta.path);
+    if (!obj) {
+      throw new NotFoundError('Result file not found in storage');
+    }
+
+    const markdown = await obj.text();
+
+    return c.json({ ...meta, markdown });
+  }
+);
 }

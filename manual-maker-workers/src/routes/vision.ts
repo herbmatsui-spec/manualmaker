@@ -8,7 +8,7 @@ import { fetchWithRetry } from '../lib/http-client';
 import { ExternalAPIError, ValidationError } from '../lib/errors';
 import { validate, getValidatedBody } from '../lib/validation';
 import { z } from 'zod';
-import { visionProxyBody } from '../lib/schemas';
+import { openapiVisionProxyBody } from '../lib/openapi-schemas';
 import { rateLimitVisionProxy } from '../lib/rate-limit-middleware';
 
 const VISION_API_BASE = 'https://vision.googleapis.com/v1';
@@ -21,7 +21,7 @@ export function registerVisionRoutes(app: Hono<AppEnv>) {
   app.post('/api/vision/annotate',
     rateLimitVisionProxy(),
     bodyLimit({ maxSize: 10 * 1024 * 1024 }), // 10MB as per C2 plan
-    validate({ body: visionProxyBody }),
+    validate({ body: openapiVisionProxyBody }),
     async (c) => {
       const apiKey = c.env.GOOGLE_API_KEY;
       if (!apiKey) {

@@ -6,7 +6,7 @@ import { Hono } from 'hono';
 import type { AppEnv } from '../lib/types';
 import { validate, getValidatedBody, getValidatedParams } from '../lib/validation';
 import { bodyLimit } from '../lib/body-limit';
-import { geminiProxyParams, geminiProxyBody } from '../lib/schemas';
+import { openapiGeminiProxyParams, openapiGeminiProxyBody } from '../lib/openapi-schemas';
 import { fetchWithRetry } from '../lib/http-client';
 import { ExternalAPIError, ValidationError } from '../lib/errors';
 import { z } from 'zod';
@@ -22,7 +22,7 @@ export function registerGeminiRoutes(app: Hono<AppEnv>) {
   app.post('/api/gemini/:model/:method',
     rateLimitGeminiProxy(),
     bodyLimit({ maxSize: 10 * 1024 * 1024 }), // 10MB as per C2 plan
-    validate({ params: geminiProxyParams, body: geminiProxyBody }),
+    validate({ params: openapiGeminiProxyParams, body: openapiGeminiProxyBody }),
     async (c) => {
       const { model, method } = getValidatedParams<{ model: string; method: string }>(c);
       const body = getValidatedBody<Record<string, unknown>>(c);

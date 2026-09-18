@@ -1,0 +1,11 @@
+name = "manual-maker"
+main = "./manual_processor/functions"
+compatibility_date = "2024-01-01"
+
+[[kv_namespaces]]
+binding = "FILES"
+id = "placeholder"
+
+[[r2_buckets]]
+binding = "BUCKET"
+bucket_name = "manual-processor-files"

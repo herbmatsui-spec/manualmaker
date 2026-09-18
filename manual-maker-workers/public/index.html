@@ -1,0 +1,60 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Manual Maker Local</title>
+<link rel="stylesheet" href="./style.css">
+</head>
+<body>
+<header class="app-header">
+  <h1>Manual Maker <span class="badge">ローカル処理版</span></h1>
+  <p>PDFの読み込み・文字抽出・編集・保存はすべてブラウザ内で完結します。ファイルやテキストはサーバーへ送信されません。</p>
+</header>
+
+<main>
+  <section class="panel" id="upload-panel">
+    <h2>1. PDFを読み込む</h2>
+    <div id="drop-zone" class="drop-zone" role="button" tabindex="0" aria-label="PDFファイルを選択">
+      <p>PDFをドラッグ＆ドロップ または クリックして選択</p>
+      <input type="file" id="file-input" accept="application/pdf" hidden>
+    </div>
+    <p id="file-status" class="status" aria-live="polite"></p>
+  </section>
+
+  <section class="panel hidden" id="extract-panel">
+    <h2>2. 文字抽出</h2>
+    <div class="toolbar">
+      <button id="extract-button" class="primary">テキストを抽出</button>
+      <span id="extract-status" class="status" aria-live="polite"></span>
+    </div>
+    <p class="hint">スキャン画像のみのPDFにはテキスト層がありません。その場合「抽出結果なし」と表示されます（OCRは行いません）。</p>
+  </section>
+
+  <section class="panel hidden" id="edit-panel">
+    <h2>3. 編集</h2>
+    <label for="editor">編集するテキスト（自動保存されません）</label>
+    <textarea id="editor" rows="18" spellcheck="false" placeholder="ここに抽出されたテキストが表示されます。自由に編集できます。"></textarea>
+    <div class="toolbar">
+      <label>文字数: <span id="char-count">0</span></label>
+      <button id="save-md" class="primary" disabled>Markdownで保存</button>
+      <button id="save-txt" disabled>テキストで保存</button>
+      <button id="print-pdf" disabled>PDFで印刷/保存</button>
+    </div>
+  </section>
+
+  <section class="panel" id="save-panel">
+    <h2>4. 保存について</h2>
+    <p class="hint">保存先はブラウザのダウンロードです。内容は端末外に送られません。</p>
+  </section>
+</main>
+
+<footer class="app-footer">
+  <p>静的ホスティングのみで動作。バックエンドAPI・ストレージ・AI呼び出しはありません。</p>
+</footer>
+
+<pre id="print-content"></pre>
+<noscript>この画面にはJavaScriptが必要です。最新のブラウザで開いてください。</noscript>
+<script type="module" src="./app.js"></script>
+</body>
+</html>

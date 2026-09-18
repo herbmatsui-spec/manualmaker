@@ -69,6 +69,10 @@ jobs:
         working-directory: manual_processor/workers
         run: npm run lint
 
+      - name: Run tests
+        working-directory: manual_processor/workers
+        run: npm test
+
       - name: Python syntax check
         working-directory: manual_processor
         run: |

@@ -9,7 +9,7 @@ import { registerProgressRoutes } from './progress';
 import { ValidationError, NotFoundError } from '../lib/errors';
 import { validate, getValidatedBody, getValidatedParams } from '../lib/validation';
 import { z } from 'zod';
-import { fileIdParam, processStartBody, progressUpdateBody } from '../lib/schemas';
+import { openapiFileIdParam, openapiProcessStartBody, openapiProgressUpdateBody } from '../lib/openapi-schemas';
 import { ProcessingState } from '../lib/progress-engine';
 import { createKVBatch } from '../lib/kv-batch';
 import { rateLimitProgressUpdate } from '../lib/rate-limit-middleware';
@@ -20,11 +20,11 @@ export function registerProcessRoutes(app: Hono<AppEnv>) {
    * Initialize processing state. Client will do the actual processing.
    */
 app.post('/api/process/:fileId',
-  validate({
-    params: fileIdParam,
-    body: processStartBody
-  }),
-  async (c) => {
+   validate({
+     params: openapiFileIdParam,
+     body: openapiProcessStartBody
+   }),
+   async (c) => {
     const { fileId } = getValidatedParams<{ fileId: string }>(c);
     const { options } = getValidatedBody<{ options: ProcessingOptions }>(c);
     // options is validated but not used in this endpoint; kept for future use
@@ -79,12 +79,12 @@ app.post('/api/process/:fileId',
    * Update processing progress.
    */
 app.put('/api/process/:fileId/progress',
-  rateLimitProgressUpdate(),
-  validate({
-    params: fileIdParam,
-    body: progressUpdateBody
-  }),
-  async (c) => {
+   rateLimitProgressUpdate(),
+   validate({
+     params: openapiFileIdParam,
+     body: openapiProgressUpdateBody
+   }),
+   async (c) => {
     const { fileId } = getValidatedParams<{ fileId: string }>(c);
     const updates = getValidatedBody<ProcessingState>(c);
 
@@ -140,10 +140,10 @@ app.put('/api/process/:fileId/progress',
    * GET /api/process/:fileId - get current processing state
    */
 app.get('/api/process/:fileId',
-  validate({
-    params: fileIdParam
-  }),
-  async (c) => {
+   validate({
+     params: openapiFileIdParam
+   }),
+   async (c) => {
     const { fileId } = getValidatedParams<{ fileId: string }>(c);
 
     const id = c.env.PROGRESS_DO.idFromName(fileId);

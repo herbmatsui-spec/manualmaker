@@ -1,23 +1,18 @@
 """
 Pytest configuration and fixtures for integration tests
 """
-import os
 import pytest
 import tempfile
 from pathlib import Path
 from unittest.mock import Mock, MagicMock
 
-# Set test environment before importing application modules
-os.environ["ENVIRONMENT"] = "development"
-os.environ["GOOGLE_API_KEY"] = "test-key"
-os.environ["GEMINI_API_KEY"] = "test-key"
-os.environ["ENCRYPTION_KEY"] = "dGVzdC1lbmNyeXB0aW9uLWtleS10ZXN0LWVuY3J5cHRpb24ta2V5"  # base64 encoded
-os.environ["R2_ENDPOINT_URL"] = "http://localhost:9000"
-os.environ["R2_ACCESS_KEY_ID"] = "minioadmin"
-os.environ["R2_SECRET_ACCESS_KEY"] = "minioadmin"
-os.environ["R2_BUCKET_NAME"] = "manual-processor-files-test"
-os.environ["BASE_URL"] = "http://localhost:8788"
-os.environ["ALLOWED_ORIGINS"] = "http://localhost:3000,http://localhost:8000,http://localhost:8788"
+from .test_config import TEST_ENV_VARS
+
+
+@pytest.fixture(autouse=True)
+def integration_environment(monkeypatch):
+    for key, value in TEST_ENV_VARS.items():
+        monkeypatch.setenv(key, value)
 
 
 @pytest.fixture

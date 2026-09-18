@@ -33,6 +33,3 @@ def reset_test_environment():
     """Reset environment variables to original state"""
     for key in TEST_ENV_VARS.keys():
         os.environ.pop(key, None)
-
-# Auto-setup when imported
-setup_test_environment()

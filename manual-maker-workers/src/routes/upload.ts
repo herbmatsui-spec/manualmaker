@@ -3,7 +3,7 @@
  */
 import { Hono } from 'hono';
 import type { AppEnv, UploadedFile } from '../lib/types';
-import { uuidv4, isValidFilename, validateFileId } from '../lib/utils';
+import { uuidv4, isValidFilename, sanitizeFilename, validateFileId } from '../lib/utils';
 import { NotFoundError } from '../lib/errors';
 import { validate, getValidatedBody, getValidatedParams } from '../lib/validation';
 import { z } from 'zod';
@@ -11,6 +11,7 @@ import { rateLimitUpload } from '../lib/rate-limit-middleware';
 import { bodyLimit } from '../lib/body-limit';
 import { createKVBatch } from '../lib/kv-batch';
 import { createR2Replication } from '../lib/r2-replication';
+import { openapiUploadBody } from '../lib/openapi-schemas';
 
 export function registerUploadRoutes(app: Hono<AppEnv>) {
   app.post('/api/upload', rateLimitUpload(), 
@@ -29,21 +30,22 @@ export function registerUploadRoutes(app: Hono<AppEnv>) {
       })(c, next);
     },
     validate({
-      body: z.object({
-        file: z.instanceof(File).refine(file => isValidFilename(file.name), {
-          message: 'Invalid filename'
-        })
+      body: openapiUploadBody.refine(file => isValidFilename(file.file.name), {
+        message: 'Invalid filename'
       })
     }),
     async (c) => {
       const requestId = c.get('requestId') || 'unknown';
       
-      // Get the validated file
-      const body = getValidatedBody<{ file: File }>(c);
-      const file = body.file;
+// Get the validated file
+       const body = getValidatedBody<{ file: File }>(c);
+       const file = body.file;
 
-      const fileId = uuidv4();
-      const key = `uploads/${fileId}/${file.name}`;
+       // Sanitize filename for safe usage
+       const safeFilename = sanitizeFilename(file.name);
+
+       const fileId = uuidv4();
+       const key = `uploads/${fileId}/${safeFilename}`;
 
       // R2への転送はストリーム。先行するmultipart解析のバッファリングは別途発生する。
       await c.env.BUCKET.put(key, file.stream(), {
@@ -52,13 +54,13 @@ export function registerUploadRoutes(app: Hono<AppEnv>) {
         }
       });
 
-      const meta: UploadedFile = {
-        fileId,
-        filename: file.name,
-        sizeMb: Math.round(file.size / 1024 / 1024 * 100) / 100,
-        path: key,
-        uploadedAt: new Date().toISOString()
-      };
+const meta: UploadedFile = {
+         fileId,
+         filename: safeFilename,
+         sizeMb: Math.round(file.size / 1024 / 1024 * 100) / 100,
+         path: key,
+         uploadedAt: new Date().toISOString()
+       };
 
       await c.env.PROCESSING_KV.put(`uploaded:${fileId}`, JSON.stringify(meta));
 

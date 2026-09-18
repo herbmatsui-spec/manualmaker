@@ -1,0 +1,53 @@
+name: Workers Contracts
+
+on:
+  push:
+    branches: [main, develop]
+    paths:
+      - 'manual-maker-workers/**'
+      - '.github/workflows/workers-contracts.yml'
+  pull_request:
+    paths:
+      - 'manual-maker-workers/**'
+      - '.github/workflows/workers-contracts.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: workers-contracts-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  contracts:
+    name: Workers typecheck, contracts and build
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    defaults:
+      run:
+        working-directory: manual-maker-workers
+    env:
+      WRANGLER_SEND_METRICS: 'false'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22.13.1'
+          cache: npm
+          cache-dependency-path: manual-maker-workers/package-lock.json
+      - name: Install locked dependencies
+        run: npm ci
+      - name: Type check
+        run: npm run typecheck
+      - name: Unit, integration and OpenAPI contract tests
+        run: npm test
+      - name: Build without deployment
+        run: npm run build
+      - name: Upload validated Worker bundle
+        uses: actions/upload-artifact@v4
+        with:
+          name: manual-maker-worker-${{ github.sha }}
+          path: manual-maker-workers/dist-ci/
+          if-no-files-found: error
+          retention-days: 7

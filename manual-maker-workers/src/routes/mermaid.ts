@@ -1,79 +1,171 @@
 /**
  * Mermaid routes - metadata only (rendering/validation happens client-side)
  */
-import { Hono } from 'hono';
-import type { Env } from '../lib/types';
+import { OpenAPIHono } from '@hono/zod-openapi';
+import type { AppEnv } from '../lib/types';
 import { validateFileId } from '../lib/utils';
+import { z } from 'zod';
+import { ValidationError, NotFoundError } from '../lib/errors';
+import { 
+  ValidationErrorResponseSchema, 
+  NotFoundErrorResponseSchema, 
+  InternalErrorResponseSchema 
+} from '../lib/openapi-errors';
+import { openapiFileIdParam, openapiMermaidSaveBody } from '../lib/openapi-schemas';
 
-export function registerMermaidRoutes(app: Hono<{ Bindings: Env }>) {
+export function registerMermaidRoutes(app: OpenAPIHono<AppEnv>) {
   /**
    * POST /api/mermaid/save/:fileId
    * Save edited mermaid diagram source
    */
-  app.post('/api/mermaid/save/:fileId', async (c) => {
-    try {
-      const fileId = c.req.param('fileId');
-      if (!validateFileId(fileId)) {
-        return c.json({ error: 'Invalid fileId format' }, 400);
-      }
+app.openapi({
+       path: '/api/mermaid/save/{fileId}',
+       method: 'post',
 
-      const body = await c.req.json();
-      if (typeof body.mermaid !== 'string' || body.mermaid.length === 0) {
-        return c.json({ error: 'mermaid field is required' }, 400);
-      }
+       summary: 'Save Mermaid diagram',
+       description: 'Save edited mermaid diagram source',
+request: {
+          params: openapiFileIdParam,
+           body: {
+             required: true,
+             content: {
+              'application/json': {
+                 schema: openapiMermaidSaveBody
+              }
+            }
+          }
+        },
+       responses: {
+         '200': {
+           description: 'Mermaid saved successfully',
+           content: {
+             'application/json': {
+               schema: z.object({
+                 success: z.boolean(),
+                 fileId: z.string(),
+                 path: z.string()
+               })
+             }
+           }
+         },
+         '400': {
+           description: 'Validation error',
+           content: {
+             'application/json': {
+               schema: ValidationErrorResponseSchema
+             }
+           }
+         },
+         '413': {
+           description: 'Mermaid source too large',
+           content: {
+             'application/json': {
+               schema: ValidationErrorResponseSchema
+             }
+           }
+         },
+         '500': {
+           description: 'Internal server error',
+           content: {
+             'application/json': {
+               schema: InternalErrorResponseSchema
+             }
+           }
+         }
+       }
+     },
+     async (c) => {
+       const { fileId } = c.req.valid('param');
+       const { mermaid } = c.req.valid('json');
 
-      if (body.mermaid.length > 512 * 1024) {
-        return c.json({ error: 'Mermaid source too large (max 512KB)' }, 413);
-      }
+       const key = `results/${fileId}/diagram.mmd`;
+       await c.env.BUCKET.put(key, mermaid, {
+         httpMetadata: {
+           contentType: 'text/plain; charset=utf-8'
+         }
+       });
 
-      const key = `results/${fileId}/diagram.mmd`;
-      await c.env.BUCKET.put(key, body.mermaid, {
-        httpMetadata: {
-          contentType: 'text/plain; charset=utf-8'
-        }
-      });
+       await c.env.PROCESSING_KV.put(`mermaid:${fileId}`, JSON.stringify({
+         fileId,
+         path: key,
+         size: mermaid.length,
+         savedAt: new Date().toISOString()
+       }));
 
-      await c.env.PROCESSING_KV.put(`mermaid:${fileId}`, JSON.stringify({
-        fileId,
-        path: key,
-        size: body.mermaid.length,
-        savedAt: new Date().toISOString()
-      }));
-
-      return c.json({ success: true, fileId, path: key });
-    } catch (error) {
-      console.error('Save mermaid error:', error);
-      return c.json({ error: 'Failed to save mermaid' }, 500);
-    }
-  });
+       return c.json({ success: true, fileId, path: key });
+     }
+   );
 
   /**
    * GET /api/mermaid/:fileId
    * Load saved mermaid diagram source
    */
-  app.get('/api/mermaid/:fileId', async (c) => {
-    try {
-      const fileId = c.req.param('fileId');
-      if (!validateFileId(fileId)) {
-        return c.json({ error: 'Invalid fileId format' }, 400);
-      }
+app.openapi({
+       path: '/api/mermaid/{fileId}',
+       method: 'get',
 
-      const metaJson = await c.env.PROCESSING_KV.get(`mermaid:${fileId}`);
-      if (!metaJson) {
-        return c.json({ error: 'Mermaid not found' }, 404);
-      }
+       summary: 'Load Mermaid diagram',
+       description: 'Load saved mermaid diagram source',
+       request: {
+         params: openapiFileIdParam
+       },
+       responses: {
+         '200': {
+           description: 'Mermaid diagram source',
+           content: {
+             'application/json': {
+               schema: z.object({
+                 fileId: z.string(),
+                 path: z.string(),
+                 size: z.number().int(),
+                 savedAt: z.string(),
+                 mermaid: z.string()
+               })
+             }
+           }
+         },
+         '400': {
+           description: 'Validation error',
+           content: {
+             'application/json': {
+               schema: ValidationErrorResponseSchema
+             }
+           }
+         },
+         '404': {
+           description: 'Mermaid not found',
+           content: {
+             'application/json': {
+               schema: NotFoundErrorResponseSchema
+             }
+           }
+         },
+         '500': {
+           description: 'Internal server error',
+           content: {
+             'application/json': {
+               schema: InternalErrorResponseSchema
+             }
+           }
+         }
+       }
+     },
+     async (c) => {
+       const { fileId } = c.req.valid('param');
 
-      const meta = JSON.parse(metaJson);
-      const obj = await c.env.BUCKET.get(meta.path);
-      if (!obj) {
-        return c.json({ error: 'Mermaid file not found in storage' }, 404);
-      }
+       const metaJson = await c.env.PROCESSING_KV.get(`mermaid:${fileId}`);
+       if (!metaJson) {
+         throw new NotFoundError('Mermaid');
+       }
 
-      const mermaid = await obj.text();
-      return c.json({ ...meta, mermaid });
-    } catch (error) {
-      console.error('Get mermaid error:', error);
-      return c.json({ error: 'Failed to get mermaid' }, 500);
-    }
-  });
+       const meta = JSON.parse(metaJson);
+       const obj = await c.env.BUCKET.get(meta.path);
+       if (!obj) {
+         throw new NotFoundError('Mermaid file not found in storage');
+       }
+
+       const mermaid = await obj.text();
+       return c.json({ ...meta, mermaid });
+     }
+   );
 }

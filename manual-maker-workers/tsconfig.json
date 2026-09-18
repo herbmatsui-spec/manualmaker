@@ -2,10 +2,10 @@
   "compilerOptions": {
     "target": "ES2022",
     "module": "ESNext",
-    "moduleResolution": "bundler",
+    "moduleResolution": "node",
     "lib": ["ES2022", "WebWorker"],
     "strict": true,
-    "types": ["@cloudflare/workers-types"],
+    "types": ["@cloudflare/workers-types", "node"],
     "noEmit": true,
     "skipLibCheck": true,
     "forceConsistentCasingInFileNames": true,

@@ -15,6 +15,9 @@ downloads/
 eggs/
 .eggs/
 lib/
+# Workers application sources are not Python build output.
+!/manual-maker-workers/src/lib/
+!/manual-maker-workers/src/lib/**
 lib64/
 parts/
 sdist/
@@ -134,6 +137,18 @@ cython_debug/
 Thumbs.db
 .vscode/
 .idea/
+
+# JavaScript dependencies and Workers generated/local files
+node_modules/
+.wrangler/
+/manual-maker-workers/dist-ci/
+/manual-maker-workers/coverage/
+*.tsbuildinfo
+.dev.vars
+.dev.vars.*
+!.dev.vars.example
+.env.*
+!.env.example
 
 # Application-specific noise
 manual_processor/temp/

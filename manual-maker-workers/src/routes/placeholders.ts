@@ -2,28 +2,28 @@
  * Placeholder routes - to be implemented in steps 11-25
  */
 import { Hono } from 'hono';
-import type { Env } from '../lib/types';
+import type { AppEnv } from '../lib/types';
 
-export function registerProcessRoutes(_app: Hono<{ Bindings: Env }>) {
+export function registerProcessRoutes(_app: Hono<AppEnv>) {
   // Will be implemented later
   _app.post('/api/process/:fileId', (c) => {
     return c.json({ error: 'Not implemented yet' }, 501);
   });
 }
 
-export function registerResultsRoutes(_app: Hono<{ Bindings: Env }>) {
+export function registerResultsRoutes(_app: Hono<AppEnv>) {
   _app.get('/api/results/:fileId', (c) => {
     return c.json({ error: 'Not implemented yet' }, 501);
   });
 }
 
-export function registerDownloadRoutes(_app: Hono<{ Bindings: Env }>) {
+export function registerDownloadRoutes(_app: Hono<AppEnv>) {
   _app.get('/api/download/:fileId/:type', (c) => {
     return c.json({ error: 'Not implemented yet' }, 501);
   });
 }
 
-export function registerI18nRoutes(_app: Hono<{ Bindings: Env }>) {
+export function registerI18nRoutes(_app: Hono<AppEnv>) {
   _app.get('/api/i18n/languages', (c) => {
     return c.json({ error: 'Not implemented yet' }, 501);
   });
@@ -41,7 +41,7 @@ export function registerI18nRoutes(_app: Hono<{ Bindings: Env }>) {
   });
 }
 
-export function registerSecurityRoutes(_app: Hono<{ Bindings: Env }>) {
+export function registerSecurityRoutes(_app: Hono<AppEnv>) {
   _app.get('/api/security/status', (c) => {
     return c.json({
       piiMaskingEnabled: true,
@@ -63,7 +63,7 @@ export function registerSecurityRoutes(_app: Hono<{ Bindings: Env }>) {
   });
 }
 
-export function registerMermaidRoutes(_app: Hono<{ Bindings: Env }>) {
+export function registerMermaidRoutes(_app: Hono<AppEnv>) {
   _app.post('/api/mermaid/validate', async (c) => {
     return c.json({ valid: false, error: 'Not implemented yet' }, 501);
   });
