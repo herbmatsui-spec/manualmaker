@@ -9,3 +9,10 @@ id = "placeholder"
 [[r2_buckets]]
 binding = "BUCKET"
 bucket_name = "manual-processor-files"
+
+[[r2_buckets]]
+binding = "BUCKET_SECONDARY"
+bucket_name = "manual-processor-files-secondary"
+
+[[triggers]]
+crons = ["0 2 * * *"]

@@ -1,4 +1,4 @@
-# 手書きマニュアル処理システム (Manual Processor) v3.1.0
+# 手書きマニュアル処理システム (Manual Processor) v3.2.0
 
 [![Python Version](https://img.shields.io/badge/python-3.8%2B-blue.svg)](https://www.python.org/)
 
@@ -8,6 +8,22 @@
 [![Status](https://img.shields.io/badge/status-production%20ready-brightgreen.svg)]()
 
 スキャンされた手書きマニュアル（PDF）を読み込み、**Google Gemini API** および **Google Cloud Vision API** を活用して高精度なOCR解析・初心者向けの要約および構造化を行い、**PDF**・**Word文書**・**音声ファイル(MP3/WAV)**・**フローチャート画像(PNG)** の複数フォーマットで自動出力するシステムです。
+
+---
+
+## 🆕 v3.2.0 新機能 & 変更点
+
+- **Cloudflare Workers API クライアント抽象化 (v3.2 新機能)**
+  - `createGeminiApi()` / `createVisionApi()` による外部 API クライアントのインスタンス化を `index.ts` で一元管理。
+  - 各ルートから直接 API を呼び出せるようになり、`geminiApi.callModel()` / `visionApi.annotateImage()` 経由で API 呼び出しを簡素化。
+  - メトリクスエンドポイント経由で API インスタンスの状態を参照可能に。
+- **R2 バケット追加 & スケジューラー対応 (v3.2 新機能)**
+  - `BUCKET_SECONDARY`（セカンダリ R2 バケット）を追加し、二重保存・バックアップ対応。
+  - `triggers.crons = ["0 2 * * *"]` により、毎日午前2時からの定期タスク（クリーンアップ等）を有効化。
+- **ルートコードの整理 & 型強化 (v3.2 新機能)**
+  - `gemini.ts` / `vision.ts` から重複する API キー検証・リクエスト構築ロジックを抽出し、共通クライアントに集約。
+  - `results.ts` / `security.ts` に `bodyLimit` ミドルウェアを追加し、リクエストボディサイズ制限を強化。
+  - `security.ts` の型注釈を修正（同一の配列型表記を統一）。
 
 ---
 

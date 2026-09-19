@@ -7,10 +7,10 @@ import type { AppEnv } from '../lib/types';
 import { validate, getValidatedBody, getValidatedParams } from '../lib/validation';
 import { bodyLimit } from '../lib/body-limit';
 import { openapiGeminiProxyParams, openapiGeminiProxyBody } from '../lib/openapi-schemas';
-import { fetchWithRetry } from '../lib/http-client';
-import { ExternalAPIError, ValidationError } from '../lib/errors';
+import { ExternalAPIError } from '../lib/errors';
 import { z } from 'zod';
 import { rateLimitGeminiProxy } from '../lib/rate-limit-middleware';
+import { geminiApi } from '../index';
 
 const GEMINI_API_BASE = 'https://generativelanguage.googleapis.com/v1beta';
 
@@ -27,27 +27,7 @@ export function registerGeminiRoutes(app: Hono<AppEnv>) {
       const { model, method } = getValidatedParams<{ model: string; method: string }>(c);
       const body = getValidatedBody<Record<string, unknown>>(c);
 
-      const apiKey = c.env.GEMINI_API_KEY;
-      if (!apiKey) {
-        throw new ExternalAPIError('gemini', 'GEMINI_API_KEY not configured', undefined, 503);
-      }
-
-      const url = `${GEMINI_API_BASE}/models/${model}:${method}`;
-      const response = await fetchWithRetry(url, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'x-goog-api-key': apiKey
-        },
-        body: JSON.stringify(body)
-      });
-
-      if (!response.ok) {
-        const errorText = await response.text();
-        throw new ExternalAPIError('gemini', `Gemini API error: ${errorText.slice(0, 500)}`, response.status);
-      }
-
-      const result = await response.json();
+      const result = await geminiApi.callModel(model, method, body);
       return c.json(result);
     }
   );
@@ -56,22 +36,8 @@ export function registerGeminiRoutes(app: Hono<AppEnv>) {
    * GET /api/gemini/models - list available models
    */
   app.get('/api/gemini/models',
-    validate({ query: z.object({}) }),
     async (c) => {
-      const apiKey = c.env.GEMINI_API_KEY;
-      if (!apiKey) {
-        throw new ExternalAPIError('gemini', 'GEMINI_API_KEY not configured', undefined, 503);
-      }
-
-      const response = await fetchWithRetry(`${GEMINI_API_BASE}/models`, {
-        headers: { 'x-goog-api-key': apiKey }
-      });
-
-      if (!response.ok) {
-        throw new ExternalAPIError('gemini', 'Gemini API error', response.status);
-      }
-
-      const result = await response.json();
+      const result = await geminiApi.listModels();
       return c.json(result);
     }
   );

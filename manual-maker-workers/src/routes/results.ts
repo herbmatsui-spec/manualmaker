@@ -6,6 +6,7 @@ import type { AppEnv } from '../lib/types';
 import { validateFileId } from '../lib/utils';
 import { ValidationError, NotFoundError } from '../lib/errors';
 import { validate, getValidatedBody, getValidatedParams } from '../lib/validation';
+import { bodyLimit } from '../lib/body-limit';
 import { z } from 'zod';
 import { openapiFileIdParam, openapiResultSaveBody } from '../lib/openapi-schemas';
 
