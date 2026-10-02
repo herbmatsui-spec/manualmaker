@@ -17,7 +17,7 @@ bucket_name = "manual-processor-files-secondary"
 
 [[kv_namespaces]]
 binding = "PROCESSING_KV"
-id = "your-kv-namespace-id-here"
+id = "b630297b4a304fe3a39fb3f776db9b8b"
 
 [vars]
 DEFAULT_LANGUAGE = "ja"
