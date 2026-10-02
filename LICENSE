@@ -1,0 +1,49 @@
+Copyright (c) 2026 herbmatsui-spec. All Rights Reserved.
+
+NOTICE: This software and its associated source code, documentation, and
+configuration files (collectively, the "Software") are the proprietary
+and confidential work of the copyright holder.
+
+No license is granted. No permission is given to use, copy, modify, merge,
+publish, distribute, sublicense, sell, or create derivative works of the
+Software, in whole or in part, without the prior written permission of the
+copyright holder.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+COPYRIGHT HOLDER BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY,
+WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF
+OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
+
+---
+
+SCOPE AND EXCEPTIONS
+---------------------
+
+1. GitHub Terms of Service. Because this repository is published publicly,
+   GitHub grants its users the right to view the repository on GitHub and to
+   fork it within GitHub, as described in the GitHub Terms of Service. That
+   permission comes from GitHub, not from this notice, and applies only to
+   activity carried out on GitHub itself. Those rights do not extend to
+   cloning, redistribution, or use outside GitHub.
+
+2. Third-party components. This repository bundles or depends on
+   third-party software that is separately licensed by its respective
+   authors. Those licenses are unaffected by this notice. In particular,
+   the PDF.js distribution under manual-maker-workers/public/pdfjs/ is
+   licensed under the Apache License, Version 2.0; its LICENSE.txt and
+   cmaps/LICENSE files must be preserved, and that component may be used,
+   modified and redistributed under the Apache License 2.0 terms.
+
+3. Contributions. If you submit a pull request or otherwise contribute to
+   this repository, you represent that you have the right to do so and that
+   your contribution is licensed to the copyright holder under the same
+   terms as this notice.
+
+AUTHORISED USE
+--------------
+
+If you need a licence for personal, internal, evaluation, or commercial
+use, contact the copyright holder. Terms will be granted in writing.

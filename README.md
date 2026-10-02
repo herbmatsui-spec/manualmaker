@@ -448,12 +448,26 @@ pip install -e ".[dev]"
 pytest tests/ -v
 ```
 
-**1,332 テスト成功**（+ 16 skip）。外部 AI API は全てモック実行です。
+**1,335 テスト成功**（+ 16 skip）。外部 AI API は全てモック実行です。
 
 カバレッジ付き実行：
 ```bash
 pytest tests/ --cov=src --cov=config
 ```
+
+---
+
+## 📄 ライセンス
+
+本リポジトリは**全権利保留**（All Rights Reserved）です。オープンソースライセンスは付与しておらず、複製・改変・再配布・商用利用のいずれも著作権者の事前の書面許可が必要です。詳細は [LICENSE](LICENSE) を参照してください。
+
+GitHub の利用規約により、利用者は GitHub 上での閲覧とフォークを行うことができます。ただしこの権利は GitHub によって与えられるものであり、GitHub 外でのクローンや再配布には及びません。
+
+**例外：サードパーティコンポーネント**
+
+`manual-maker-workers/public/pdfjs/` に同梱されている PDF.js は Apache License 2.0 の下で配布されており、本ライセンスの制約は適用されません。同梱の `LICENSE.txt` と `cmaps/LICENSE` は削除せず保持してください。
+
+個人利用・社内評価・商用利用のライセンスについては、著作権者までお問い合わせください。
 
 ---
 
