@@ -49,7 +49,7 @@ class GeminiSettings(BaseModel):
     """Gemini AI settings"""
     model_config = ConfigDict(extra="ignore")
     
-    model: str = "gemini-1.5-flash"
+    model: str = "gemini-3.5-flash-lite"
     temperature: float = Field(default=0.3, ge=0.0, le=1.0)
     max_output_tokens: int = Field(default=2048, ge=1, le=8192)
 

@@ -47,7 +47,7 @@ class DocumentProcessor:
         self.summarizer = ProcessorFactory.create_processor(self.config)
         self.diagram_generator = DiagramGenerator(
             api_key=self.config.gemini_api_key,
-            model_name=getattr(self.config, 'summary_model', getattr(self.config, 'gemini_model_name', 'gemini-1.5-flash'))
+            model_name=getattr(self.config, 'summary_model', getattr(self.config, 'gemini_model_name', 'gemini-3.5-flash-lite'))
         )
         logger.info("DocumentProcessor initialized")
 

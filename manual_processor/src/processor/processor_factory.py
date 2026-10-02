@@ -77,7 +77,7 @@ class ProcessorFactory:
             api_key = getattr(cfg, 'gemini_api_key', None) or getattr(cfg, 'google_api_key', None)
             gemini_proc = GeminiProcessor(
                 api_key=api_key,
-                model_name=getattr(cfg, 'gemini_model_name', 'gemini-1.5-flash'),
+                model_name=getattr(cfg, 'gemini_model_name', 'gemini-3.5-flash-lite'),
                 temperature=getattr(cfg, 'gemini_temperature', 0.3),
                 max_output_tokens=getattr(cfg, 'gemini_max_output_tokens', 2048),
                 prompt_builder=HandwrittenPromptBuilder.from_config(cfg),

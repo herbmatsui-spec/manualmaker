@@ -36,7 +36,7 @@ class GeminiResult:
 class GeminiProcessor:
     """Processor for Google Gemini API text processing"""
     
-    def __init__(self, api_key: Optional[str] = None, model_name: str = "gemini-1.5-flash",
+    def __init__(self, api_key: Optional[str] = None, model_name: str = "gemini-3.5-flash-lite",
                  temperature: float = 0.3, max_output_tokens: int = 2048,
                  prompt_builder: Optional[HandwrittenPromptBuilder] = None):
         """
@@ -44,7 +44,7 @@ class GeminiProcessor:
         
         Args:
             api_key: Google AI Studio API key
-            model_name: Gemini model name (default: gemini-1.5-flash)
+            model_name: Gemini model name (default: gemini-3.5-flash-lite)
             temperature: Generation temperature (0.0-1.0)
             max_output_tokens: Maximum output tokens
         """

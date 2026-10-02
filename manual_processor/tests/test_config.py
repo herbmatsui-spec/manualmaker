@@ -504,13 +504,13 @@ class TestAppConfigProperties:
         """Test tts_model property"""
         from config.config import AppConfig
         config = AppConfig.from_env()
-        assert config.tts_model == "gemini-2.5-flash-tts"
+        assert config.tts_model == "gemini-3.1-flash-tts-preview"
 
     def test_tts_fallback_model(self):
         """Test tts_fallback_model property"""
         from config.config import AppConfig
         config = AppConfig.from_env()
-        assert config.tts_fallback_model == "gemini-3.1-flash-tts"
+        assert config.tts_fallback_model == "gemini-3.8-flash-lite-tts"
 
     def test_compact_layout(self):
         """Test compact_layout property"""

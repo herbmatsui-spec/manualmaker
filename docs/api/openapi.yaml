@@ -65,7 +65,7 @@ paths:
                 properties:
                   gemini_model_name:
                     type: string
-                    example: gemini-1.5-flash
+                    example: gemini-3.5-flash-lite
                   processor_type:
                     type: string
                     example: gemini

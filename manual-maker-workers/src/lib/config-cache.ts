@@ -6,7 +6,7 @@ export function getConfig(env: Env): ConfigResponse {
   if (cached) return cached;
 
   const config: ConfigResponse = {
-    geminiModelName: env.GEMINI_MODEL_NAME || 'gemini-1.5-flash',
+    geminiModelName: env.GEMINI_MODEL_NAME || 'gemini-3.5-flash-lite',
     processorType: 'cloudflare-workers',
     pdfDpi: 300,
     maxFileSizeMb: parseInt(env.MAX_FILE_SIZE_MB || '50', 10),

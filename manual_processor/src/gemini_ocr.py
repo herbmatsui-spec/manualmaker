@@ -34,10 +34,10 @@ class GeminiOCRProcessor:
         self.api_key = api_key
         if _HAS_GENAI:
             self.client = genai.Client(api_key=self.api_key)
-            self.model_name = 'gemini-1.5-flash'
+            self.model_name = 'gemini-3.5-flash-lite'
         else:
             genai.configure(api_key=self.api_key)
-            self.model = genai.GenerativeModel('gemini-1.5-flash')
+            self.model = genai.GenerativeModel('gemini-3.5-flash-lite')
         logger.info("Gemini OCR Processor initialized")
     
     @retry(

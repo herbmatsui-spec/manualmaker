@@ -11,7 +11,7 @@ vi.mock('../../lib/kv-batch', () => ({ createKVBatch: () => ({ getByPrefix }) })
 
 function setup() {
   const queryProgress = vi.fn().mockResolvedValue(state);
-  const env = { RATE_LIMIT_ENABLED: 'false', GEMINI_MODEL_NAME: 'gemini-1.5-flash',
+  const env = { RATE_LIMIT_ENABLED: 'false', GEMINI_MODEL_NAME: 'gemini-3.5-flash-lite',
     PROCESSING_KV: { get: vi.fn(), put: vi.fn() },
     PROGRESS_DO: { idFromName: (name: string) => name, get: () => ({ queryProgress }) },
   } as unknown as Env;
@@ -25,7 +25,7 @@ describe('P9 config, process list and progress contracts', () => {
     const response = await s.app.request('/api/config', undefined, s.env);
     expect(response.status).toBe(200);
     expect(await response.json()).toEqual({
-      geminiModelName: 'gemini-1.5-flash', processorType: 'cloudflare-workers', pdfDpi: 300,
+      geminiModelName: 'gemini-3.5-flash-lite', processorType: 'cloudflare-workers', pdfDpi: 300,
       maxFileSizeMb: 50, webUploadMaxMb: 100, outputDirectory: 'r2://manual-processor-files',
       supportedExtensions: ['.pdf'], defaultLanguage: 'ja',
     });

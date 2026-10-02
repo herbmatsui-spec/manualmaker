@@ -182,7 +182,7 @@ describe('createRateLimiter', () => {
       DEFAULT_LANGUAGE: 'ja',
       MAX_FILE_SIZE_MB: '50',
       WEB_UPLOAD_MAX_MB: '100',
-      GEMINI_MODEL_NAME: 'gemini-1.5-flash'
+      GEMINI_MODEL_NAME: 'gemini-3.5-flash-lite'
     } as unknown as Env;
     
     const limiter = createRateLimiter(mockEnv, rateLimitConfigs.upload);
@@ -206,7 +206,7 @@ describe('rateLimit middleware', () => {
       DEFAULT_LANGUAGE: 'ja',
       MAX_FILE_SIZE_MB: '50',
       WEB_UPLOAD_MAX_MB: '100',
-      GEMINI_MODEL_NAME: 'gemini-1.5-flash',
+      GEMINI_MODEL_NAME: 'gemini-3.5-flash-lite',
       RATE_LIMIT_ENABLED: undefined, // enable by default
     } as unknown as Env;
   });

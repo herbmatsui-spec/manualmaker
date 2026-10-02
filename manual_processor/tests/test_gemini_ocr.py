@@ -27,7 +27,7 @@ class TestGeminiOCRProcessor:
             genai_mod.Client = MagicMock(return_value=MagicMock())
             proc = GeminiOCRProcessor(api_key="K")
         genai_mod.Client.assert_called_once_with(api_key="K")
-        assert proc.model_name == "gemini-1.5-flash"
+        assert proc.model_name == "gemini-3.5-flash-lite"
 
     def test_init_uses_legacy_generativeai(self):
         from src.gemini_ocr import GeminiOCRProcessor
@@ -37,7 +37,7 @@ class TestGeminiOCRProcessor:
             genai_mod.GenerativeModel = MagicMock(return_value=MagicMock())
             proc = GeminiOCRProcessor(api_key="K")
         genai_mod.configure.assert_called_once_with(api_key="K")
-        genai_mod.GenerativeModel.assert_called_once_with("gemini-1.5-flash")
+        genai_mod.GenerativeModel.assert_called_once_with("gemini-3.5-flash-lite")
 
     def test_extract_text_new_genai_success(self):
         from src.gemini_ocr import GeminiOCRProcessor

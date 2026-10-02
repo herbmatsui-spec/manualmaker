@@ -15,7 +15,7 @@ import { getGeminiApi } from '../lib/external-api';
 export function registerGeminiRoutes(app: Hono<AppEnv>) {
   /**
    * POST /api/gemini/:model/:method
-   * e.g. /api/gemini/gemini-1.5-flash/generateContent
+   * e.g. /api/gemini/gemini-3.5-flash-lite/generateContent
    */
   app.post('/api/gemini/:model/:method',
     rateLimitGeminiProxy(),

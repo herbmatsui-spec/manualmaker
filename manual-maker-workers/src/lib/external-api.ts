@@ -57,7 +57,7 @@ export class GeminiApi {
 
   async generateContent(request: GeminiRequest): Promise<any> {
     const { env } = this.requireBinding();
-    return this.callModel(env.GEMINI_MODEL_NAME || 'gemini-1.5-flash', 'generateContent', { ...request });
+    return this.callModel(env.GEMINI_MODEL_NAME || 'gemini-3.5-flash-lite', 'generateContent', { ...request });
   }
 
   /** streamGenerateContent deliberately preserves the existing buffered JSON contract. */

@@ -253,7 +253,7 @@ class AppConfig:
 
     @property
     def ocr_model(self) -> str:
-        return "gemini-1.5-flash" if not self.vision_api else "vision-api"
+        return "gemini-3.5-flash-lite" if not self.vision_api else "vision-api"
 
     @property
     def summary_model(self) -> str:
@@ -261,11 +261,11 @@ class AppConfig:
 
     @property
     def tts_model(self) -> str:
-        return "gemini-2.5-flash-tts"
+        return "gemini-3.1-flash-tts-preview"
 
     @property
     def tts_fallback_model(self) -> str:
-        return "gemini-3.1-flash-tts"
+        return "gemini-3.8-flash-lite-tts"
 
     @property
     def compact_layout(self) -> bool:

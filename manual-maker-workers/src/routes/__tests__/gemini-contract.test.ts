@@ -4,7 +4,7 @@ import { appErrorResponseSchema } from '../openapi';
 import type { Env } from '../../lib/types';
 
 const env = { RATE_LIMIT_ENABLED: 'false', GEMINI_API_KEY: 'test-only-key' } as Env;
-const path = '/api/gemini/gemini-1.5-flash/generateContent';
+const path = '/api/gemini/gemini-3.5-flash-lite/generateContent';
 const request = { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}' };
 
 afterEach(() => { vi.unstubAllGlobals(); vi.restoreAllMocks(); vi.useRealTimers(); });
@@ -18,11 +18,11 @@ describe('P9 Gemini contracts with real retry wrapper', () => {
     const fetchMock = vi.fn().mockResolvedValue(Response.json(payload));
     vi.stubGlobal('fetch', fetchMock);
     const app = createApp();
-    const response = await app.request(`/api/gemini/gemini-1.5-flash/${method}`, request, env);
+    const response = await app.request(`/api/gemini/gemini-3.5-flash-lite/${method}`, request, env);
     expect(response.status).toBe(200);
     expect(await response.json()).toEqual(payload);
     expect(fetchMock).toHaveBeenCalledExactlyOnceWith(
-      `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:${method}`,
+      `https://generativelanguage.googleapis.com/v1beta/models/gemini-3.5-flash-lite:${method}`,
       expect.objectContaining({ method: 'POST', body: '{}', headers: {
         'Content-Type': 'application/json', 'x-goog-api-key': 'test-only-key',
       } }),

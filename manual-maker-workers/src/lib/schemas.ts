@@ -120,7 +120,7 @@ export const resultSaveBody = z.object({
 export const geminiProxyParams = z.object({
   model: z.string().regex(/^[a-z0-9.\-]+$/i, 'Invalid model name').openapi({
     description: 'Gemini model name',
-    example: 'gemini-1.5-flash'
+    example: 'gemini-3.5-flash-lite'
   }),
   method: z.enum(['generateContent', 'streamGenerateContent', 'countTokens']).openapi({
     description: 'Gemini API method to call',

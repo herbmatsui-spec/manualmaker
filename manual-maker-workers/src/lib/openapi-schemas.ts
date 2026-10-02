@@ -54,7 +54,7 @@ export const openapiResultSaveBody = resultSaveBody.openapi({
 export const openapiGeminiProxyParams = geminiProxyParams.openapi({
   description: 'Gemini API proxy parameters',
   example: {
-    model: 'gemini-1.5-flash',
+    model: 'gemini-3.5-flash-lite',
     method: 'generateContent'
   }
 })

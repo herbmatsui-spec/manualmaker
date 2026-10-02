@@ -73,7 +73,7 @@ class CloudflareConfig:
         
         # Processing options
         self.processor_type = os.getenv("PROCESSOR_TYPE", "gemini")
-        self.gemini_model_name = os.getenv("GEMINI_MODEL_NAME", "gemini-1.5-flash")
+        self.gemini_model_name = os.getenv("GEMINI_MODEL_NAME", "gemini-3.5-flash-lite")
         self.gemini_temperature = float(os.getenv("GEMINI_TEMPERATURE", "0.3"))
         self.gemini_max_output_tokens = int(os.getenv("GEMINI_MAX_OUTPUT_TOKENS", "2048"))
         
