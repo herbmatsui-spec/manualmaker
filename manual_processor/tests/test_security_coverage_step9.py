@@ -204,22 +204,36 @@ class TestFernetEncryption:
             provider = FernetEncryption()
         assert provider._fernet is None
 
-    def test_encrypt_with_short_key_generates_random_fernet(self):
-        # 32バイト未満のキーは ljust で32バイトに足されるため通常発生しないが、
-        # _init_fernet の分岐を直接検証する
+    def test_init_fernet_uses_padded_fallback_for_short_key(self):
+        # 32バイトにデコードされないキーは ljust(32) のフォールバック経路を通る
+        import base64
+
         provider = FernetEncryption()
-        provider._fernet = None
         fake_fernet_cls = Mock()
         with patch("src.security.strategies.Fernet", fake_fernet_cls), \
              patch.dict("os.environ", {"ENCRYPTION_KEY": "test-key"}, clear=False), \
-             patch.object(provider, "_fernet", None, create=True), \
-             patch("builtins.len", side_effect=lambda x: 0 if isinstance(x, bytes) else len(x)):
-            try:
-                provider._init_fernet()
-            except Exception:
-                pass
-        # 分岐実行の成否に関わらず、Fernet 生成が試みられたことを確認
-        assert fake_fernet_cls.called or provider._fernet is None
+             patch.object(provider, "_fernet", None, create=True):
+            provider._init_fernet()
+
+            fake_fernet_cls.assert_called_once()
+            padded_key = fake_fernet_cls.call_args[0][0]
+            assert base64.urlsafe_b64decode(padded_key) == b"test-key".ljust(32)
+            assert provider._fernet is fake_fernet_cls.return_value
+
+    def test_init_fernet_passes_through_valid_32_byte_key(self):
+        # 正しく32バイトにデコードされるキーはそのまま Fernet に渡される
+        import base64
+
+        valid_key = base64.urlsafe_b64encode(bytes(range(32))).decode()
+        provider = FernetEncryption()
+        fake_fernet_cls = Mock()
+        with patch("src.security.strategies.Fernet", fake_fernet_cls), \
+             patch.dict("os.environ", {"ENCRYPTION_KEY": valid_key}, clear=False), \
+             patch.object(provider, "_fernet", None, create=True):
+            provider._init_fernet()
+
+            fake_fernet_cls.assert_called_once_with(valid_key)
+            assert provider._fernet is fake_fernet_cls.return_value
 
 
 # ---------------------------------------------------------------------------

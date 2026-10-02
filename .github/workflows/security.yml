@@ -21,10 +21,10 @@ jobs:
         with:
           node-version: '20'
           cache: 'npm'
-          cache-dependency-path: manual_processor/workers/package-lock.json
+          cache-dependency-path: manual-maker-workers/package-lock.json
 
       - name: Update Worker dependencies
-        working-directory: manual_processor/workers
+        working-directory: manual-maker-workers
         run: |
           npm update --save
           npm audit fix --force || true
@@ -67,10 +67,10 @@ jobs:
         with:
           node-version: '20'
           cache: 'npm'
-          cache-dependency-path: manual_processor/workers/package-lock.json
+          cache-dependency-path: manual-maker-workers/package-lock.json
 
       - name: npm audit
-        working-directory: manual_processor/workers
+        working-directory: manual-maker-workers
         run: |
           npm audit --audit-level=high || true
 
@@ -81,13 +81,10 @@ jobs:
           cache: 'pip'
           cache-dependency-path: manual_processor/requirements-pages.txt
 
-      - name: Install safety
-        run: pip install safety
-
-      - name: Python safety check
-        working-directory: manual_processor
+      - name: Python dependency audit
         run: |
-          safety check -r requirements-pages.txt || true
+          python -m pip install pip-audit
+          pip-audit -r manual_processor/requirements.txt || true
 
       - name: Run bandit security linter
         working-directory: manual_processor
