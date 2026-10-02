@@ -1,6 +1,7 @@
 import { Hono } from 'hono';
-import { createGeminiApi } from '../lib/external-api';
-import { createVisionApi } from '../lib/external-api';
+import type { Context } from 'hono';
+import { createGeminiApi, getGeminiApi, getVisionApi } from '../lib/external-api';
+import type { createVisionApi } from '../lib/external-api';
 import type { AppEnv } from '../lib/types';
 import type { ProgressMetrics } from '../lib/progress-metrics';
 import { rateLimitConfigs } from '../lib/rate-limiter';
@@ -8,9 +9,17 @@ import { rateLimitConfigs } from '../lib/rate-limiter';
 let geminiApiInstance: ReturnType<typeof createGeminiApi> | null = null;
 let visionApiInstance: ReturnType<typeof createVisionApi> | null = null;
 
+/** Test seam: overrides the per-isolate clients that metrics otherwise reads from the request env. */
 export function setApiInstances(geminiApi: ReturnType<typeof createGeminiApi>, visionApi: ReturnType<typeof createVisionApi>) {
   geminiApiInstance = geminiApi;
   visionApiInstance = visionApi;
+}
+
+function resolveApis(c: Context<AppEnv>) {
+  return {
+    gemini: geminiApiInstance ?? getGeminiApi(c.env),
+    vision: visionApiInstance ?? getVisionApi(c.env),
+  };
 }
 
 export function registerMetricsRoutes(app: Hono<AppEnv>) {
@@ -20,15 +29,17 @@ export function registerMetricsRoutes(app: Hono<AppEnv>) {
       gemini: {},
       vision: {}
     };
-    
-    if (geminiApiInstance && typeof geminiApiInstance.getCircuitMetrics === 'function') {
-      result.gemini = geminiApiInstance.getCircuitMetrics();
+
+    const { gemini, vision } = resolveApis(c);
+
+    if (typeof gemini.getCircuitMetrics === 'function') {
+      result.gemini = gemini.getCircuitMetrics();
     }
-    
-    if (visionApiInstance && typeof visionApiInstance.getCircuitMetrics === 'function') {
-      result.vision = visionApiInstance.getCircuitMetrics();
+
+    if (typeof vision.getCircuitMetrics === 'function') {
+      result.vision = vision.getCircuitMetrics();
     }
-    
+
     return c.json(result);
   });
 
@@ -103,14 +114,16 @@ app.get('/api/metrics/rate-limit', async (c) => {
      });
 
   app.post('/api/system/reset-circuit-breakers', async (c) => {
-    if (geminiApiInstance && typeof geminiApiInstance.resetCircuitBreaker === 'function') {
-      geminiApiInstance.resetCircuitBreaker();
+    const { gemini, vision } = resolveApis(c);
+
+    if (typeof gemini.resetCircuitBreaker === 'function') {
+      gemini.resetCircuitBreaker();
     }
-    
-    if (visionApiInstance && typeof visionApiInstance.resetCircuitBreaker === 'function') {
-      visionApiInstance.resetCircuitBreaker();
+
+    if (typeof vision.resetCircuitBreaker === 'function') {
+      vision.resetCircuitBreaker();
     }
-    
+
     return c.json({
       success: true,
       message: 'Circuit breakers reset',

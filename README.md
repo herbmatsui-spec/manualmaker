@@ -1,22 +1,98 @@
-# 手書きマニュアル処理システム (Manual Processor) v3.2.0
+# 手書きマニュアル処理システム (Manual Maker)
 
+[![Workers Tests](https://img.shields.io/badge/workers-261%20passing-brightgreen.svg)](manual-maker-workers)
+[![Python Tests](https://img.shields.io/badge/python-1332%20passing-brightgreen.svg)](manual_processor)
+[![TypeScript](https://img.shields.io/badge/TypeScript-strict-blue.svg)](manual-maker-workers)
 [![Python Version](https://img.shields.io/badge/python-3.8%2B-blue.svg)](https://www.python.org/)
-
-[![Platform](https://img.shields.io/badge/platform-Windows%2010%2F11-win.svg)]()
-[![Tests](https://img.shields.io/badge/tests-1325%20passed-brightgreen.svg)]()
-[![Coverage](https://img.shields.io/badge/coverage-90%25-brightgreen.svg)](https://codecov.io/)
-[![Status](https://img.shields.io/badge/status-production%20ready-brightgreen.svg)]()
+[![Platform](https://img.shields.io/badge/platform-Windows%20%2F%20Linux%20%2F%20macOS-lightgrey.svg)]()
 
 スキャンされた手書きマニュアル（PDF）を読み込み、**Google Gemini API** および **Google Cloud Vision API** を活用して高精度なOCR解析・初心者向けの要約および構造化を行い、**PDF**・**Word文書**・**音声ファイル(MP3/WAV)**・**フローチャート画像(PNG)** の複数フォーマットで自動出力するシステムです。
 
 ---
 
+## 📦 リポジトリ構成
+
+本リポジトリには **別々に動作する 2 つのコンポーネント** が含まれます。用途もデプロイ先も異なります。
+
+| | `manual-maker-workers/` | `manual_processor/` |
+|---|---|---|
+| 技術 | TypeScript (Hono + Zod OpenAPI) | Python (FastAPI) |
+| 実行環境 | Cloudflare Workers | ローカル / デスクトップ |
+| デプロイ | **あり**（Wrangler で Cloudflare へ） | なし（`pip install` してローカル実行） |
+| 検証コマンド | `npm test` | `pytest tests/` |
+| 役割 | API プロキシ、R2 / KV / DO によるアップロード・進捗管理、PII マスキング | Gemini / Vision を用いた PDF 解析とローカル出力（PDF / DOCX / 音声） |
+
+**Cloudflare にデプロイするのは `manual-maker-workers/` だけです。**
+対応する Wrangler 設定は [`manual-maker-workers/wrangler.toml`](manual-maker-workers/wrangler.toml) のみです。リポジトリルートに `wrangler.toml` は置きません（誤デプロイ防止のため）。
+
+### Workers の主なエンドポイント
+
+| メソッド | パス | 概要 |
+|---|---|---|
+| GET | `/api/health` | ヘルスチェック |
+| GET | `/api/doc` | OpenAPI 仕様 |
+| POST | `/api/upload` | multipart アップロード → R2（`WEB_UPLOAD_MAX_MB` を実サイズで検証） |
+| POST | `/api/gemini/{model}/{method}` | Gemini プロキシ（API キーをブラウザに露出させない） |
+| POST | `/api/vision/annotate` | Cloud Vision プロキシ |
+| POST | `/api/security/mask` | サーバー側 PII マスキング |
+
+---
+
+## ☁️ Cloudflare へのデプロイ
+
+### 前提
+
+- Workers プラン（Durable Objects は SQLite バックエンドのみのため無料プランでも利用可能）
+- R2 バケット 2 本、Workers KV namespace 1 件
+
+### 手順
+
+```bash
+cd manual-maker-workers
+npm ci
+
+# 1. R2 バケットを作成（存在しない場合）
+npx wrangler r2 bucket create manual-processor-files
+npx wrangler r2 bucket create manual-processor-files-secondary
+
+# 2. KV namespace を作成し、出力された ID を wrangler.toml の PROCESSING_KV.id に反映する
+npx wrangler kv namespace create PROCESSING_KV
+
+# 3. API キーを secret として登録する
+npx wrangler secret put GEMINI_API_KEY
+npx wrangler secret put GOOGLE_API_KEY
+
+# 4. デプロイ
+npx wrangler deploy
+```
+
+`scheduled` ハンドラは毎日 UTC 02:00 に実行されます（`triggers.crons`）。
+
+### 必要なバインディング
+
+| バインディング | 種類 | 備考 |
+|---|---|---|
+| `BUCKET` | R2 | `manual-processor-files` |
+| `BUCKET_SECONDARY` | R2 | 二重保存用。未設定でも動作する |
+| `PROCESSING_KV` | KV | `wrangler.toml` の `id` はプレースホルダのまま。**必ず実 ID に置換すること** |
+| `PROGRESS_DO` | Durable Object | `ProgressEngine`（SQLite バックエンド） |
+
+### デプロイ前の検証
+
+```bash
+npm run typecheck   # tsc --noEmit
+npm test            # vitest run（36 ファイル / 261 テスト）
+npm run build       # wrangler deploy --dry-run
+```
+
+---
+
 ## 🆕 v3.2.0 新機能 & 変更点
 
-- **Cloudflare Workers API クライアント抽象化 (v3.2 新機能)**
-  - `createGeminiApi()` / `createVisionApi()` による外部 API クライアントのインスタンス化を `index.ts` で一元管理。
-  - 各ルートから直接 API を呼び出せるようになり、`geminiApi.callModel()` / `visionApi.annotateImage()` 経由で API 呼び出しを簡素化。
-  - メトリクスエンドポイント経由で API インスタンスの状態を参照可能に。
+- **Cloudflare Workers API クライアント抽象化 (v3.2)**
+  - `src/lib/external-api.ts` に `GeminiApi` / `VisionApi` を集約。Gemini / Vision への呼び出しをサーキットブレーカー・リトライ・フォールバックキャッシュで統一的に処理する。
+  - クライアントは isolate ごとに 1 つだけ生成し、リクエストごとに `env` を再バインドする。これによりサーキットブレーカーの状態がリクエスト間で維持される。
+  - 認証情報が未設定の場合は上流を呼ばずに 502 を返す。
 - **R2 バケット追加 & スケジューラー対応 (v3.2 新機能)**
   - `BUCKET_SECONDARY`（セカンダリ R2 バケット）を追加し、二重保存・バックアップ対応。
   - `triggers.crons = ["0 2 * * *"]` により、毎日午前2時からの定期タスク（クリーンアップ等）を有効化。
@@ -48,7 +124,7 @@
 - 🌐 **Cloudflare Workers スタンドアロンデプロイ対応 (v3.0 新機能)**
   - `SecurityManager` が **Cloudflare Workers 環境でスタンドアロン動作** 可能に
   - KV Namespace (`PII_PATTERNS`, `API_KEYS`) と Secret (`ENCRYPTION_KEY`) のみで運用可能
-  - `wrangler publish` だけでデプロイ完了、追加インフラ不要
+  - `wrangler deploy` だけでデプロイ完了、追加インフラ不要
 - 🚀 **性能最適化 & バッチ並列 OCR / キャッシュ管理**
   - メモリ (LRU Eviction) およびディスクベースの2層キャッシュ構造 (`CacheManager`)。
   - 大規模 PDF に対応した **バッチ並列 OCR & メモリ自動解放**（ページごとのリソース即時破棄）。
@@ -163,7 +239,7 @@ manual_processor/
 │       ├── strategies.py    # ハードコード/環境変数/無効化戦略
 │       ├── strategies_workers.py # Cloudflare Workers用戦略 (KV/Web Crypto)
 │       └── config.py        # SecurityConfig DI 設定クラス
-├── tests/                   # pytest テストスイート (1325件)
+├── tests/                   # pytest テストスイート (1,332件)
 ├── scripts/                 # スタンドアロン exe ビルドスクリプト等
 ├── main.py                  # アプリケーション共通エントリーポイント
 ├── pyproject.toml           # パッケージメタデータ・依存関係
@@ -323,14 +399,21 @@ masked, info = SecurityManager.mask_sensitive_data("Email: test@example.com")
 
 #### Cloudflare Workers デプロイ手順
 
+> ⚠️ **この節は Python 版の `SecurityManager` を Worker に移植する場合の手順であり、公開されている Worker の構成ではありません。**
+> `manual-maker-workers/wrangler.toml` は `PII_PATTERNS` / `API_KEYS` バインディングを **定義していません**。
+> 同梱の Worker は PII マスキングを `src/routes/security.ts` のサーバー側実装で行い、KV を経由しません。
+> 迷った場合は、この README 先頭の「Cloudflare へのデプロイ」節を参照してください。
+
+Python 側を Worker で運用する場合のみ、以下を追加します。
+
 ```toml
-# wrangler.toml
+# manual_processor/wrangler.toml （別構成）
 [[kv_namespaces]]
 binding = "PII_PATTERNS"
 id = "your-pii-patterns-kv-id"
 
 [[kv_namespaces]]
-binding = "API_KEYS" 
+binding = "API_KEYS"
 id = "your-api-keys-kv-id"
 ```
 
@@ -339,25 +422,37 @@ id = "your-api-keys-kv-id"
 wrangler secret put ENCRYPTION_KEY
 
 # デプロイ
-wrangler publish
+wrangler deploy
 ```
 
 ---
 
 ## 🧪 テストの実行
 
-全1325件のユニットテスト・統合テストを実行します：
+### Workers (`manual-maker-workers/`)
+
+```bash
+cd manual-maker-workers
+npm ci
+npm run typecheck   # tsc --noEmit
+npm test            # vitest run
+```
+
+**36 ファイル / 261 テスト**。外部 API は全てモック実行です。
+
+### Python (`manual_processor/`)
 
 ```bash
 cd manual_processor
-python -m pytest tests/ -v
+pip install -e ".[dev]"
+pytest tests/ -v
 ```
 
-現在のテスト件数は **1325件** です。外部AI APIを使用するテストはモックで実行します。
+**1,332 テスト成功**（+ 16 skip）。外部 AI API は全てモック実行です。
 
-カバレッジ付きテスト実行：
+カバレッジ付き実行：
 ```bash
-python -m pytest tests/ --cov=src --cov=config --cov-fail-under=90
+pytest tests/ --cov=src --cov=config
 ```
 
 ---

@@ -91,7 +91,7 @@ export default {
 
 ## Step 4: Deploy
 ```bash
-wrangler publish
+wrangler deploy
 ```
 
 ## Verification

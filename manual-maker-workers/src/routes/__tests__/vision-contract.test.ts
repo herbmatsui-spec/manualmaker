@@ -25,10 +25,11 @@ describe('P9 Vision contract', () => {
     const response = await createApp().request(path, request({ requests: [annotation] }), env);
     expect(response.status).toBe(200);
     expect(await response.json()).toEqual(payload);
-    expect(fetchMock).toHaveBeenCalledExactlyOnceWith('https://vision.googleapis.com/v1/images:annotate', {
-      method: 'POST', headers: { 'Content-Type': 'application/json', 'x-goog-api-key': 'test-only-key' },
-      body: JSON.stringify({ requests: [annotation] }),
-    });
+    expect(fetchMock).toHaveBeenCalledExactlyOnceWith('https://vision.googleapis.com/v1/images:annotate',
+      expect.objectContaining({
+        method: 'POST', headers: { 'Content-Type': 'application/json', 'x-goog-api-key': 'test-only-key' },
+        body: JSON.stringify({ requests: [annotation] }),
+      }));
   });
   it.each([{ requests: Array(17).fill(annotation) }, { requests: [{ image: {} }] }])('rejects invalid bodies before fetching', async body => {
     vi.spyOn(console, 'error').mockImplementation(() => {});

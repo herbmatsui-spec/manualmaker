@@ -190,7 +190,7 @@ describe('FormData Support Test', () => {
     });
 
     expect(response.status).toBe(200);
-    const json = await response.json();
+    const json = await response.json() as { filename: string; type: string };
     expect(json.filename).toBe('test.pdf');
     expect(json.type).toBe('application/pdf');
   });

@@ -3,6 +3,7 @@ import { CircuitBreaker } from './circuit-breaker';
 import { fetchWithRetry } from './http-client';
 import { ExternalAPIError } from './errors';
 import { createFallbackCache } from './fallback-cache';
+import type { FallbackCache } from './fallback-cache';
 import { apiCacheKey, executeWithApiFallback } from './api-fallback';
 import { geminiProxyParams } from './schemas';
 
@@ -21,30 +22,55 @@ interface VisionRequest {
   }>;
 }
 
+interface ApiBinding {
+  env: Env;
+  cache: FallbackCache;
+}
+
 /** Request-scoped cache keys prevent sharing one generation across unrelated inputs. */
 export class GeminiApi {
   private readonly circuitBreaker = new CircuitBreaker('gemini-api', {
     failureThreshold: 5, recoveryTimeoutMs: 60_000, successThreshold: 3, timeoutMs: 10_000,
   });
-  private readonly fallbackCache: ReturnType<typeof createFallbackCache>;
+  private binding: ApiBinding | undefined;
 
-  constructor(private readonly env: Env) {
-    this.fallbackCache = createFallbackCache(env);
+  constructor(env?: Env) {
+    if (env) this.setEnv(env);
+  }
+
+  /** Workers env is fixed per deployment; rebinding is what lets one isolate serve differing test envs. */
+  setEnv(env: Env): this {
+    this.binding = { env, cache: createFallbackCache(env) };
+    return this;
+  }
+
+  private requireBinding(): ApiBinding {
+    if (!this.binding) throw new ExternalAPIError('gemini', 'Gemini API bindings are not configured');
+    return this.binding;
+  }
+
+  private requireCredential(env: Env): string {
+    const credential = env.GEMINI_API_KEY;
+    if (!credential) throw new ExternalAPIError('gemini', 'GEMINI_API_KEY is not configured');
+    return credential;
   }
 
   async generateContent(request: GeminiRequest): Promise<any> {
-    return this.callModel(this.env.GEMINI_MODEL_NAME || 'gemini-1.5-flash', 'generateContent', { ...request });
+    const { env } = this.requireBinding();
+    return this.callModel(env.GEMINI_MODEL_NAME || 'gemini-1.5-flash', 'generateContent', { ...request });
   }
 
   /** streamGenerateContent deliberately preserves the existing buffered JSON contract. */
   async callModel(modelName: string, methodName: string, request: Record<string, unknown>): Promise<any> {
+    const { env, cache } = this.requireBinding();
+    const apiKey = this.requireCredential(env);
     const { model, method } = geminiProxyParams.parse({ model: modelName, method: methodName });
-    const key = await apiCacheKey('gemini', this.env.GEMINI_API_KEY, `${model}:${method}`, request);
-    return executeWithApiFallback(this.circuitBreaker, this.fallbackCache, key, async signal => {
+    const key = await apiCacheKey('gemini', apiKey, `${model}:${method}`, request);
+    return executeWithApiFallback(this.circuitBreaker, cache, key, async signal => {
       const response = await fetchWithRetry(
         `https://generativelanguage.googleapis.com/v1beta/models/${model}:${method}`, {
           method: 'POST', signal,
-          headers: { 'Content-Type': 'application/json', 'x-goog-api-key': this.env.GEMINI_API_KEY },
+          headers: { 'Content-Type': 'application/json', 'x-goog-api-key': apiKey },
           body: JSON.stringify(request),
         }, { maxRetries: 2 });
       if (!response.ok) {
@@ -57,10 +83,12 @@ export class GeminiApi {
   }
 
   async listModels(): Promise<any> {
-    const key = await apiCacheKey('gemini', this.env.GEMINI_API_KEY, 'listModels', null);
-    return executeWithApiFallback(this.circuitBreaker, this.fallbackCache, key, async signal => {
+    const { env, cache } = this.requireBinding();
+    const apiKey = this.requireCredential(env);
+    const key = await apiCacheKey('gemini', apiKey, 'listModels', null);
+    return executeWithApiFallback(this.circuitBreaker, cache, key, async signal => {
       const response = await fetchWithRetry('https://generativelanguage.googleapis.com/v1beta/models', {
-        method: 'GET', signal, headers: { 'x-goog-api-key': this.env.GEMINI_API_KEY },
+        method: 'GET', signal, headers: { 'x-goog-api-key': apiKey },
       }, { maxRetries: 2 });
       if (!response.ok) {
         await response.body?.cancel();
@@ -79,18 +107,31 @@ export class VisionApi {
   private readonly circuitBreaker = new CircuitBreaker('vision-api', {
     failureThreshold: 3, recoveryTimeoutMs: 30_000, successThreshold: 2, timeoutMs: 15_000,
   });
-  private readonly fallbackCache: ReturnType<typeof createFallbackCache>;
+  private binding: ApiBinding | undefined;
 
-  constructor(private readonly env: Env) {
-    this.fallbackCache = createFallbackCache(env);
+  constructor(env?: Env) {
+    if (env) this.setEnv(env);
+  }
+
+  setEnv(env: Env): this {
+    this.binding = { env, cache: createFallbackCache(env) };
+    return this;
+  }
+
+  private requireBinding(): ApiBinding {
+    if (!this.binding) throw new ExternalAPIError('vision', 'Vision API bindings are not configured');
+    return this.binding;
   }
 
   async annotateImage(request: VisionRequest): Promise<any> {
-    const key = await apiCacheKey('vision', this.env.GOOGLE_API_KEY, 'annotateImage', request);
-    return executeWithApiFallback(this.circuitBreaker, this.fallbackCache, key, async signal => {
+    const { env, cache } = this.requireBinding();
+    const apiKey = env.GOOGLE_API_KEY;
+    if (!apiKey) throw new ExternalAPIError('vision', 'GOOGLE_API_KEY is not configured');
+    const key = await apiCacheKey('vision', apiKey, 'annotateImage', request);
+    return executeWithApiFallback(this.circuitBreaker, cache, key, async signal => {
       const response = await fetchWithRetry('https://vision.googleapis.com/v1/images:annotate', {
         method: 'POST', signal,
-        headers: { 'Content-Type': 'application/json', 'x-goog-api-key': this.env.GOOGLE_API_KEY },
+        headers: { 'Content-Type': 'application/json', 'x-goog-api-key': apiKey },
         body: JSON.stringify(request),
       }, { maxRetries: 2 });
       if (!response.ok) {
@@ -108,3 +149,18 @@ export class VisionApi {
 
 export function createGeminiApi(env: Env): GeminiApi { return new GeminiApi(env); }
 export function createVisionApi(env: Env): VisionApi { return new VisionApi(env); }
+
+let geminiApiInstance: GeminiApi | undefined;
+let visionApiInstance: VisionApi | undefined;
+
+/**
+ * Per-isolate clients bound to the current request env. Keeping one instance per isolate is what
+ * preserves circuit-breaker state across requests; a fresh client per request would reset it.
+ */
+export function getGeminiApi(env: Env): GeminiApi {
+  return (geminiApiInstance ??= new GeminiApi()).setEnv(env);
+}
+
+export function getVisionApi(env: Env): VisionApi {
+  return (visionApiInstance ??= new VisionApi()).setEnv(env);
+}

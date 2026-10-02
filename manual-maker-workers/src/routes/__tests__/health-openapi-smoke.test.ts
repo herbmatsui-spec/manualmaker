@@ -14,14 +14,14 @@ describe('Isolated health OpenAPI smoke test', () => {
     const health = await app.request('/api/health');
     expect(health.status).toBe(200);
     expect(await health.json()).toEqual({
-      status: 'ok', version: '2.0.0', processorType: 'cloudflare-workers',
+      status: 'ok', version: '3.3.0', processorType: 'cloudflare-workers',
     });
 
     const document = await app.request('/api/doc');
     expect(document.status).toBe(200);
     expect(await document.json()).toMatchObject({
       openapi: '3.1.0',
-      info: { title: 'Manual Maker API', version: '2.0.0' },
+      info: { title: 'Manual Maker API', version: '3.3.0' },
       paths: {
         '/api/health': {
           get: {
@@ -34,7 +34,7 @@ describe('Isolated health OpenAPI smoke test', () => {
                       required: ['status', 'version', 'processorType'],
                       properties: {
                         status: { type: 'string', enum: ['ok'] },
-                        version: { type: 'string', enum: ['2.0.0'] },
+                        version: { type: 'string', enum: ['3.3.0'] },
                         processorType: { type: 'string', enum: ['cloudflare-workers'] },
                       },
                     },

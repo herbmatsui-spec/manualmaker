@@ -28,7 +28,7 @@ describe('OpenAPI Contract Testing', () => {
     expect(response.status).toBe(200);
     expect(await response.json()).toMatchObject({
       openapi: '3.1.0',
-      info: { title: 'Manual Maker API', version: '2.0.0' },
+      info: { title: 'Manual Maker API', version: '3.3.0' },
       paths: {
         '/api/upload': { post: { responses: { '200': {
           content: { 'application/json': { schema: {
@@ -66,7 +66,7 @@ describe('OpenAPI Contract Testing', () => {
     const response = await app.request('/api/health', undefined, env);
     expect(response.status).toBe(200);
     expect(healthResponseSchema.parse(await response.json())).toEqual({
-      status: 'ok', version: '2.0.0', processorType: 'cloudflare-workers',
+      status: 'ok', version: '3.3.0', processorType: 'cloudflare-workers',
     });
   });
 });

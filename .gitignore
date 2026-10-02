@@ -161,7 +161,19 @@ manual_processor/manual_processor.egg-info/
 manual_processor/manual_processor.egg-info/
 manual_processor/*.egg-info/
 manual_processor/=4.0.0
-manual_processor/新規 テキスト ドキュメント.txt
+manual_processor/新規_テキスト_ドキュメント.txt
 manual_processor/coverage.xml
+manual_processor/coverage.json
 manual_processor/.coverage*
+
+# Generated documentation site (MkDocs output)
+/docs/site/
+
+# Wrangler dev build artifact
+_worker.bundle
+
+# Editor/config backups
+*.bak
+*.bak2
+
 temp/

@@ -9,9 +9,7 @@ import { bodyLimit } from '../lib/body-limit';
 import { z } from 'zod';
 import { openapiVisionProxyBody } from '../lib/openapi-schemas';
 import { rateLimitVisionProxy } from '../lib/rate-limit-middleware';
-import { visionApi } from '../index';
-
-const VISION_API_BASE = 'https://vision.googleapis.com/v1';
+import { getVisionApi } from '../lib/external-api';
 
 export function registerVisionRoutes(app: Hono<AppEnv>) {
   /**
@@ -25,7 +23,7 @@ export function registerVisionRoutes(app: Hono<AppEnv>) {
     async (c) => {
       const body = getValidatedBody<{ requests: Array<{ image: { content: string }; features: Array<{ type: string; maxResults?: number }> }> }>(c);
 
-      const result = await visionApi.annotateImage(body);
+      const result = await getVisionApi(c.env).annotateImage(body);
       return c.json(result);
     }
   );

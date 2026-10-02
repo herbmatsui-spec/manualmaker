@@ -17,6 +17,14 @@ export class ValidationError extends AppError {
   }
 }
 
+/** Rejects oversized payloads once the real size is known, not only when Content-Length is present. */
+export class PayloadTooLargeError extends AppError {
+  constructor(message: string, details?: unknown) {
+    super('VALIDATION_ERROR', message, 413, details);
+    this.name = 'PayloadTooLargeError';
+  }
+}
+
 export class StorageError extends AppError {
   constructor(message: string, details?: unknown) {
     super('STORAGE_ERROR', message, 500, details);

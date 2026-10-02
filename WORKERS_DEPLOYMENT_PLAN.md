@@ -433,7 +433,7 @@ async def handle_request(request):
 
 ## Deployment
 ```bash
-wrangler publish
+wrangler deploy
 ```
 ```
 
@@ -525,7 +525,7 @@ Once these steps are complete, the SecurityManager can be deployed to Cloudflare
 1. Adding the required KV bindings in wrangler.toml
 2. Setting the ENCRYPTION_KEY secret (base64-encoded 32 bytes)
 3. Using `create_workers_config()` to initialize the SecurityManager
-4. Publishing with `wrangler publish`
+4. Publishing with `wrangler deploy`
 
 The implementation avoids all backend dependencies:
 - ✅ No filesystem access (uses KV for patterns)

@@ -10,9 +10,7 @@ import { openapiGeminiProxyParams, openapiGeminiProxyBody } from '../lib/openapi
 import { ExternalAPIError } from '../lib/errors';
 import { z } from 'zod';
 import { rateLimitGeminiProxy } from '../lib/rate-limit-middleware';
-import { geminiApi } from '../index';
-
-const GEMINI_API_BASE = 'https://generativelanguage.googleapis.com/v1beta';
+import { getGeminiApi } from '../lib/external-api';
 
 export function registerGeminiRoutes(app: Hono<AppEnv>) {
   /**
@@ -27,7 +25,7 @@ export function registerGeminiRoutes(app: Hono<AppEnv>) {
       const { model, method } = getValidatedParams<{ model: string; method: string }>(c);
       const body = getValidatedBody<Record<string, unknown>>(c);
 
-      const result = await geminiApi.callModel(model, method, body);
+      const result = await getGeminiApi(c.env).callModel(model, method, body);
       return c.json(result);
     }
   );
@@ -37,7 +35,7 @@ export function registerGeminiRoutes(app: Hono<AppEnv>) {
    */
   app.get('/api/gemini/models',
     async (c) => {
-      const result = await geminiApi.listModels();
+      const result = await getGeminiApi(c.env).listModels();
       return c.json(result);
     }
   );

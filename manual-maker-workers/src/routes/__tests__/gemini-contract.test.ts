@@ -50,9 +50,10 @@ describe('P9 Gemini contracts with real retry wrapper', () => {
     const response = await app.request('/api/gemini/models', undefined, env);
     expect(response.status).toBe(200);
     expect(await response.json()).toEqual(payload);
-    expect(fetchMock).toHaveBeenCalledExactlyOnceWith('https://generativelanguage.googleapis.com/v1beta/models', {
-      headers: { 'x-goog-api-key': 'test-only-key' },
-    });
+    expect(fetchMock).toHaveBeenCalledExactlyOnceWith('https://generativelanguage.googleapis.com/v1beta/models',
+      expect.objectContaining({
+        headers: { 'x-goog-api-key': 'test-only-key' },
+      }));
   });
 
   it.each([path, '/api/gemini/models'])('returns 502 without network access for missing credentials: %s', async url => {
@@ -77,17 +78,16 @@ describe('P9 Gemini contracts with real retry wrapper', () => {
 
   it('sanitizes retry exhaustion as a 500 under the current retry policy', async () => {
     vi.spyOn(console, 'error').mockImplementation(() => {});
-    vi.useFakeTimers();
+    // Real timers: the retry backoff starts after an async cache-key digest, so advancing fake
+    // timers once before the request settles would leave the pending backoff timers unflushed.
     const fetchMock = vi.fn().mockImplementation(async () => new Response('Unavailable', { status: 503 }));
     vi.stubGlobal('fetch', fetchMock);
-    const pending = createApp().request(path, request, env);
-    await vi.runAllTimersAsync();
-    const response = await pending;
+    const response = await createApp().request(path, request, env);
     expect(response.status).toBe(500);
     expect(await response.json()).toEqual({ error: { code: 'INTERNAL_ERROR', message: 'Internal server error',
       requestId: response.headers.get('x-request-id') } });
-    expect(fetchMock).toHaveBeenCalledTimes(4);
-  });
+    expect(fetchMock).toHaveBeenCalledTimes(3);
+  }, 20_000);
 
   it('rejects an unsupported method before network access', async () => {
     vi.spyOn(console, 'error').mockImplementation(() => {});

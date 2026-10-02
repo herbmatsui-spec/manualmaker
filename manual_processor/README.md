@@ -32,7 +32,7 @@
 + 🌐 **Cloudflare Workers スタンドアロンデプロイ対応 (v3.0 新機能)**
   - `SecurityManager` が **Cloudflare Workers 環境でスタンドアロン動作** 可能に
   - KV Namespace (`PII_PATTERNS`, `API_KEYS`) と Secret (`ENCRYPTION_KEY`) のみで運用可能
-  - `wrangler publish` だけでデプロイ完了、追加インフラ不要
+  - `wrangler deploy` だけでデプロイ完了、追加インフラ不要
 - 🚀 **性能最適化 & バッチ並列 OCR / キャッシュ管理**
   - メモリ (LRU Eviction) およびディスクベースの2層キャッシュ構造 (`CacheManager`)。
   - 大規模 PDF に対応した **バッチ並列 OCR & メモリ自動解放**（ページごとのリソース即時破棄）。
@@ -254,7 +254,7 @@ id = "your-api-keys-kv-id"
 wrangler secret put ENCRYPTION_KEY
 
 # デプロイ
-wrangler publish
+wrangler deploy
 ```
 
 ---

@@ -4,8 +4,7 @@
 import { OpenAPIHono } from '@hono/zod-openapi';
 import type { AppEnv } from '../lib/types';
 import { z } from 'zod';
-import { AppError } from '../lib/errors';
-import { 
+import {
   ValidationErrorResponseSchema, 
   InternalErrorResponseSchema 
 } from '../lib/openapi-errors';
@@ -24,21 +23,13 @@ export function registerSecurityRoutes(app: OpenAPIHono<AppEnv>) {
   /**
    * GET /api/security/status
    */
-  app.openapi('/api/security/status',
-    'get',
-    {
+  app.openapi({
+      path: '/api/security/status',
+      method: 'get',
       middleware: [],
       summary: 'Get security status',
       description: 'Returns security feature status and configuration',
-      request: {
-        params: {
-          content: {
-            'application/json': {
-              schema: z.object({}) // no params
-            }
-          }
-        }
-      },
+      
       responses: {
         '200': {
           description: 'Security status',
@@ -73,7 +64,7 @@ export function registerSecurityRoutes(app: OpenAPIHono<AppEnv>) {
         }
       }
     },
-    // @ts-ignore: Overload mismatch
+    
     async (c) => {
       return c.json({
         piiMaskingEnabled: true,
@@ -89,21 +80,13 @@ export function registerSecurityRoutes(app: OpenAPIHono<AppEnv>) {
    * GET /api/security/patterns
    * Serves PII patterns to the client for client-side masking
    */
-  app.openapi('/api/security/patterns',
-    'get',
-    {
+  app.openapi({
+      path: '/api/security/patterns',
+      method: 'get',
       middleware: [],
       summary: 'Get PII patterns',
       description: 'Serves PII patterns to the client for client-side masking',
-      request: {
-        params: {
-          content: {
-            'application/json': {
-              schema: z.object({}) // no params
-            }
-          }
-        }
-      },
+      
       responses: {
         '200': {
           description: 'PII patterns',
@@ -138,7 +121,7 @@ export function registerSecurityRoutes(app: OpenAPIHono<AppEnv>) {
         }
       }
     },
-    // @ts-ignore: Overload mismatch
+    
     async (c) => {
       // Try to get from cache
       const cached = caches.piiPatterns.get('pii_patterns');
@@ -169,8 +152,9 @@ export function registerSecurityRoutes(app: OpenAPIHono<AppEnv>) {
         const requestId = c.get('requestId') || 'unknown';
         console.error(`[${requestId}] Get patterns error:`, error);
         const patterns = DEFAULT_PII_PATTERNS;
-        const source = 'default';
+        const source: 'kv' | 'default' = 'default';
         caches.piiPatterns.set('pii_patterns', { patterns, source });
+        return c.json({ patterns, source });
       }
     });
 
@@ -178,9 +162,9 @@ export function registerSecurityRoutes(app: OpenAPIHono<AppEnv>) {
    * POST /api/security/mask
    * Server-side masking fallback (light regex work only - safe in 10ms CPU limit)
    */
-  app.openapi('/api/security/mask',
-    'post',
-    {
+  app.openapi({
+      path: '/api/security/mask',
+      method: 'post',
       middleware: [],
       summary: 'Mask PII in text',
       description: 'Server-side masking fallback (light regex work only - safe in 10ms CPU limit)',
@@ -188,8 +172,9 @@ export function registerSecurityRoutes(app: OpenAPIHono<AppEnv>) {
         body: {
           content: {
             'application/json': {
+              // Max length is enforced in the handler so an oversized body answers 413, not 400.
               schema: z.object({
-                text: z.string().max(1024 * 1024, 'Text too large (max 1MB)')
+                text: z.string()
               })
             }
           }
@@ -233,13 +218,20 @@ export function registerSecurityRoutes(app: OpenAPIHono<AppEnv>) {
         }
       }
     },
-    // @ts-ignore: Overload mismatch
+    
     async (c) => {
       const body = await c.req.json();
       const text = typeof body.text === 'string' ? body.text : '';
 
       if (text.length > 1024 * 1024) {
-        throw new AppError('VALIDATION_ERROR', 'Text too large (max 1MB)', 413);
+        // Answered here rather than thrown so the 413 holds even without the app-wide error handler.
+        return c.json({
+          error: {
+            code: 'VALIDATION_ERROR' as const,
+            message: 'Text too large (max 1MB)',
+            requestId: c.get('requestId') || 'unknown'
+          }
+        }, 413);
       }
 
       let maskedText = text;

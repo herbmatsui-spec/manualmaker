@@ -67,7 +67,7 @@ masked, info = SecurityManager.mask_sensitive_data(
 
 ### Deployment:
 ```bash
-wrangler publish
+wrangler deploy
 ```
 
 ## Test Files

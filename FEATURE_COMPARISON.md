@@ -19,7 +19,7 @@
 | **WebSocket** | Native FastAPI WS | Durable Objects (有料) または polling | 案AではKVポーリングまたはSSEに変更 |
 | **進捗表示** | WebSocket + Durable Objects | SSE (Server-Sent Events) または KVポーリング | 無料枠内で実装可能 |
 | **静的ファイル配信** | Jinja2テンプレート | Cloudflare Pages (静的ホスティング) | ビルド不要で即時配信 |
-| **デプロイ** | Docker / VM / ローカルPython | `wrangler publish` (Workers/Pages) | 無料枠内で完結 |
+| **デプロイ** | Docker / VM / ローカルPython | `wrangler deploy` (Workers/Pages) | 無料枠内で完結 |
 | **コスト** | サーバー維持費 | 無料枠内で $0 (条件付き) | Gemini/Vision APIの使用量による |
 | **開発言語** | Python | TypeScript | 型安全かつモダン |
 | **ビルドツール** | setuptools / pyinstaller | wrangler + typescript | 簡単なCI/CD |

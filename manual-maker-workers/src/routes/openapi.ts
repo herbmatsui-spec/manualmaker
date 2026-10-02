@@ -40,7 +40,7 @@ export const appErrorResponseSchema = z.object({
 
 export const healthResponseSchema = z.object({
   status: z.literal('ok'),
-  version: z.literal('2.0.0'),
+  version: z.literal('3.3.0'),
   processorType: z.literal('cloudflare-workers'),
 }).strict();
 
@@ -371,7 +371,7 @@ export function registerOpenAPIRoutes(app: OpenAPIHono<AppEnv>) {
   app.doc('/api/doc', {
     openapi: '3.1.0',
     info: {
-      title: 'Manual Maker API', version: '2.0.0',
+      title: 'Manual Maker API', version: '3.3.0',
       description: 'Workers API. Currently documents OpenAPI-registered routes plus health and upload; remaining route contracts are pending.',
     },
   });

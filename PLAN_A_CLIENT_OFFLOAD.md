@@ -428,7 +428,7 @@ class ManualProcessorApp {
 
 ## 成功基準
 1. `wrangler dev` でローカル開発が可能
-2. `wrangler publish` で Cloudflare Pages に静的サイトがデプロイ可能
+2. `wrangler deploy` で Cloudflare Pages に静的サイトがデプロイ可能
 3. `wrangler deploy` で Workers がデプロイ可能
 4. ファイルアップロードから結果ダウンロードまでの一連のフローがブラウザで完結
 5. 無料枠内での運用が見込める（想定使用量が無料枠以内）

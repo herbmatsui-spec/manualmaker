@@ -192,17 +192,23 @@ class GoogleDriveManager:
             try:
                 from google.auth.transport.requests import Request
                 creds.refresh(Request())
-                token_info = {
-                    "token": creds.token,
-                    "refresh_token": creds.refresh_token,
-                    "token_uri": creds.token_uri,
-                    "client_id": creds.client_id,
-                    "client_secret": creds.client_secret,
-                    "scopes": list(creds.scopes or SCOPES),
-                }
-                set_api_key(KEYRING_SERVICE, KEYRING_CREDENTIALS_USERNAME, json.dumps(token_info))
             except Exception as e:
                 raise GoogleDriveError(f"Failed to refresh access token: {e}") from e
+
+            token_info = {
+                "token": creds.token,
+                "refresh_token": creds.refresh_token,
+                "token_uri": creds.token_uri,
+                "client_id": creds.client_id,
+                "client_secret": creds.client_secret,
+                "scopes": list(creds.scopes or SCOPES),
+            }
+            # Best-effort cache: headless, container and CI hosts have no keyring backend, and
+            # losing the cache only costs one extra refresh on the next call.
+            try:
+                set_api_key(KEYRING_SERVICE, KEYRING_CREDENTIALS_USERNAME, json.dumps(token_info))
+            except Exception as e:
+                logger.warning(f"Refreshed access token but could not cache it: {e}")
 
         self._creds = creds
         return creds

@@ -6,7 +6,7 @@ import type { AppEnv } from '../lib/types';
 
 export function registerHealthRoutes(app: Hono<AppEnv>) {
   app.get('/api/health', validate({ query: openapiConfigQuery }), c => c.json({
-    status: 'ok', version: '2.0.0', processorType: 'cloudflare-workers',
+    status: 'ok', version: '3.3.0', processorType: 'cloudflare-workers',
   }));
 
   app.get('/api/health/deep', async c => {

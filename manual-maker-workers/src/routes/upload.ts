@@ -2,9 +2,9 @@
  * Upload routes - streaming upload implementation
  */
 import { Hono } from 'hono';
-import type { AppEnv, UploadedFile } from '../lib/types';
+import type { AppEnv, Env, UploadedFile } from '../lib/types';
 import { uuidv4, isValidFilename, sanitizeFilename, validateFileId } from '../lib/utils';
-import { NotFoundError } from '../lib/errors';
+import { NotFoundError, PayloadTooLargeError } from '../lib/errors';
 import { validate, getValidatedBody, getValidatedParams } from '../lib/validation';
 import { z } from 'zod';
 import { rateLimitUpload } from '../lib/rate-limit-middleware';
@@ -13,22 +13,18 @@ import { createKVBatch } from '../lib/kv-batch';
 import { createR2Replication } from '../lib/r2-replication';
 import { openapiUploadBody } from '../lib/openapi-schemas';
 
+function resolveUploadMaxSize(env: Env): number {
+  const configuredMaxMb = Number(env.WEB_UPLOAD_MAX_MB);
+  const maxSizeMb = Number.isFinite(configuredMaxMb) && configuredMaxMb > 0 ? configuredMaxMb : 100;
+  return Math.floor(maxSizeMb * 1024 * 1024);
+}
+
 export function registerUploadRoutes(app: Hono<AppEnv>) {
-  app.post('/api/upload', rateLimitUpload(), 
-    (c, next) => {
-      // Calculate max size from environment variable, similar to existing logic
-      const configuredMaxMb = Number(c.env.WEB_UPLOAD_MAX_MB);
-      const maxSizeMb = Number.isFinite(configuredMaxMb) && configuredMaxMb > 0
-        ? configuredMaxMb
-        : 100;
-      const maxSize = Math.floor(maxSizeMb * 1024 * 1024);
-      
-      // Apply body limit middleware
-      return bodyLimit({ 
-        maxSize,
-        errorMessage: 'Uploaded file too large' 
-      })(c, next);
-    },
+  app.post('/api/upload', rateLimitUpload(),
+    (c, next) => bodyLimit({
+      maxSize: resolveUploadMaxSize(c.env),
+      errorMessage: 'Uploaded file too large'
+    })(c, next),
     validate({
       body: openapiUploadBody.refine(file => isValidFilename(file.file.name), {
         message: 'Invalid filename'
@@ -43,6 +39,13 @@ export function registerUploadRoutes(app: Hono<AppEnv>) {
 
        // Sanitize filename for safe usage
        const safeFilename = sanitizeFilename(file.name);
+
+       // Content-Length is absent for multipart bodies, so the limit is re-checked on the parsed file
+       // before anything is written to R2.
+       const maxSize = resolveUploadMaxSize(c.env);
+       if (file.size > maxSize) {
+         throw new PayloadTooLargeError('Uploaded file too large', { maxSize });
+       }
 
        const fileId = uuidv4();
        const key = `uploads/${fileId}/${safeFilename}`;

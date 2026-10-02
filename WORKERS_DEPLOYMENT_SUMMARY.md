@@ -49,7 +49,7 @@ The SecurityManager can now be deployed to Cloudflare Workers standalone by:
    wrangler secret put ENCRYPTION_KEY
    ```
 3. Using `SecurityConfig.from_workers_env()` or manual strategy injection
-4. Publishing with `wrangler publish`
+4. Publishing with `wrangler deploy`
 
 ## Limitations
 The KVPatternProvider currently returns empty patterns when KV is not available (rather than falling back to hardcoded patterns). This does not affect Workers deployment since KV namespaces are expected to be configured in wrangler.toml for production use. For local testing, developers can ensure the KV namespaces are properly mocked or available.

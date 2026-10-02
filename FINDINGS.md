@@ -54,11 +54,11 @@ DEPLOYMENT_GUIDE.md に従ってデプロイを試みたが、以下の理由で
 
 7. 本番環境にデプロイ：
    ```bash
-   wrangler publish
+   wrangler deploy
    ```
    または、特定の環境にデプロイする場合：
    ```bash
-   wrangler publish --env production
+   wrangler deploy --env production
    ```
 
 ### 注意点
